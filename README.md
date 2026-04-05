@@ -1,10 +1,11 @@
-<<<<<<< HEAD
 ---
 title: Hackathon Env
 emoji: 🤖
 colorFrom: blue
 colorTo: green
 sdk: docker
+app_file: server/app.py
+pinned: false
 ---
 
 # Adaptive Customer Support Decision Engine (OpenEnv)
@@ -163,7 +164,6 @@ Response:
 
 We are sorry for the inconvenience. We understand your concern. This case has been marked as priority. Since it has been 12 days, we will process your refund.
 
-=======
 # Adaptive Customer Support Decision Engine (OpenEnv)
 
 ## Overview
@@ -184,127 +184,11 @@ The system is fully deterministic, explainable, and reproducible.
 - Reward-based evaluation
 - Lightweight and fast
 - OpenEnv compatible
->>>>>>> 3921579932e783ffda6cf62ab1f041fad24bd0a0
 
 ---
 
 ## API Endpoints
 
-<<<<<<< HEAD
-| Endpoint   | Description                     |
-|----------|---------------------------------|
-| /reset  | Start new ticket        |
-| /step   | Execute action        |
-| /state  | Get current state   |
-
----
-
-## Performance
-
-- Average Score: ~0.9
-- Deterministic outputs
-- Stable across runs  
-- No external dependencies
----
-## Project Structure
-hackathon_env/
-│── server/
-│   ├── app.py
-│   ├── models.py
-│   ├── hackathon_env_environment.py
-│
-│── inference.py
-│── Dockerfile
-│── openenv.yaml
-│── requirements.txt
-│── README.md
-
-
-## Setup Instructions
-
-### Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### Run Server
-
-```bash
-uvicorn server.app:app --reload
-```
-
-### Run Agent
-
-```bash
-python inference.py
-```
-
----
-
-## Optional Environment Variables
-
-```bash
-API_BASE_URL=local
-MODEL_NAME=rule-based-agent
-HF_TOKEN=dummy
-```
-
----
-
-## Docker
-
-```bash
-docker build -t hackathon-env .
-docker run -p 7860:7860 hackathon-env
-```
-
----
-
-## HuggingFace Deployment
-```bash
-openenv push --repo-id <your-username>/hackathon-env
-```
-### After Deployment
-https://<your-username>-hackathon-env.hf.space/reset
-
----
-
-## Compliance
-
-- Multi-step RL environment  
-- Reward-based evaluation  
-- Deterministic agent 
-- Docker-compatible 
-- OpenEnv API compliant
-
----
-
-## Why This Approach Stands Out
-
-- No API dependency
-- Fully reproducible
-- Explainable decisions
-- Stable evaluation performance
-
-This makes it ideal for evaluation-driven environments like hackathons.
-
----
-
-## Determinism
-
-- Fixed tasks
-- No randomness
-- Reproducible scoring
-
-
-## Conclusion
-
-This project demonstrates how customer support workflows can be modeled as a structured RL problem using deterministic decision-making.
-
-It provides a reliable, interpretable, and evaluation-friendly alternative to API-based solutions.
-
-=======
 - `/reset` → Start a new ticket
 - `/step` → Take an action
 - `/state` → Get current state
@@ -335,4 +219,3 @@ uvicorn server.app:app --reload
 Author
 
 Avneet Kaur
->>>>>>> 3921579932e783ffda6cf62ab1f041fad24bd0a0
