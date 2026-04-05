@@ -1,0 +1,2 @@
+[console_scripts]
+server = hackathon_env.server.app:main

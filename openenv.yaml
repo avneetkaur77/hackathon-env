@@ -1,0 +1,15 @@
+spec_version: 1
+name: hackathon_env
+type: environment
+
+runtime: fastapi
+app: server.app:app
+port: 7860
+
+tasks:
+  - id: easy
+    description: Billing issue classification
+  - id: medium
+    description: Delivery delay requiring refund
+  - id: hard
+    description: Ambiguous issue requiring reasoning
