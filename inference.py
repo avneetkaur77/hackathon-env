@@ -5,52 +5,38 @@ from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
 
 # =========================
-# SAFE ENV HANDLING
+# STRICT ENV (MUST EXIST)
 # =========================
-
-API_BASE_URL = os.environ.get("API_BASE_URL")
-API_KEY = os.environ.get("API_KEY")
-
-# =========================
-# SAFE CLIENT INIT (NO CRASH)
-# =========================
-
-client = None
-
-def init_client():
-    global client
-    try:
-        if API_BASE_URL and API_KEY:
-            client = OpenAI(
-                base_url=API_BASE_URL,
-                api_key=API_KEY
-            )
-            print("[STEP] Client initialized with proxy")
-        else:
-            print("[WARNING] Missing API envs")
-    except Exception as e:
-        print("[WARNING] Client init failed:", str(e))
-        client = None
+API_BASE_URL = os.environ["API_BASE_URL"]
+API_KEY = os.environ["API_KEY"]
 
 # =========================
-# FORCE PROXY CALL (SAFE)
+# CLIENT INIT (SAFE BUT STRICT)
 # =========================
+try:
+    client = OpenAI(
+        base_url=API_BASE_URL,
+        api_key=API_KEY
+    )
+except Exception as e:
+    print("[FATAL] Client init failed:", str(e))
+    raise e  # must fail if env wrong
 
+# =========================
+# FORCE REAL API CALL (MANDATORY)
+# =========================
 def ping_llm():
-    if client is None:
-        print("[WARNING] No client, skipping LLM call")
-        return
-
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": "Say OK"}],
+            messages=[{"role": "user", "content": "Reply with OK"}],
             max_tokens=5
         )
-        print("[STEP] LLM call success")
+        print("[SUCCESS] Proxy call made")
 
     except Exception as e:
-        print("[WARNING] LLM call failed:", str(e))
+        print("[FATAL] LLM call failed:", str(e))
+        raise e   # ❗ MUST NOT IGNORE
 
 
 MAX_STEPS = 3
@@ -58,7 +44,6 @@ MAX_STEPS = 3
 # =========================
 # AGENT LOGIC
 # =========================
-
 def intelligent_agent(observation):
     ticket = observation.metadata
 
@@ -97,7 +82,6 @@ def intelligent_agent(observation):
 # =========================
 # RUN EPISODE
 # =========================
-
 def run_episode(env, episode_num):
     obs = env.reset()
 
@@ -123,14 +107,10 @@ def run_episode(env, episode_num):
 # =========================
 # MAIN
 # =========================
-
 def main():
     print("[START]")
 
-    # ✅ Initialize safely
-    init_client()
-
-    # ✅ Attempt proxy call (won't crash)
+    # ❗ THIS LINE IS THE WHOLE POINT
     ping_llm()
 
     env = HackathonEnvironment()
