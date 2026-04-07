@@ -6,7 +6,7 @@ from server.models import HackathonAction
 # ✅ KEEP THESE (required by evaluator)
 API_BASE_URL = os.getenv("API_BASE_URL", "local")
 MODEL_NAME = os.getenv("MODEL_NAME", "rule-based-agent")
-HF_TOKEN = os.getenv("HF_TOKEN", "dummy")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 MAX_STEPS = 3
 
