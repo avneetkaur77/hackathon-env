@@ -1,12 +1,9 @@
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
 
-# ✅ ADD THIS (required for submission compatibility)
+# ✅ KEEP THESE (required by evaluator)
 API_BASE_URL = os.getenv("API_BASE_URL", "local")
 MODEL_NAME = os.getenv("MODEL_NAME", "rule-based-agent")
 HF_TOKEN = os.getenv("HF_TOKEN", "dummy")
@@ -15,22 +12,17 @@ MAX_STEPS = 3
 
 
 # =========================
-# INTELLIGENT AGENT (FINAL)
+# INTELLIGENT AGENT (UNCHANGED)
 # =========================
 
 def intelligent_agent(observation):
     ticket = observation.metadata
 
-    # ✅ SAFE ACCESS (FIXED)
     text = (ticket.get("text") or observation.ticket_text).lower()
     days = ticket.get("days", 0)
     is_urgent = ticket.get("is_urgent", False)
 
     reasoning = []
-
-    # =========================
-    # CATEGORY (FINAL LOGIC)
-    # =========================
 
     if any(w in text for w in ["charge", "charged", "billing", "payment", "invoice"]):
         category = "billing"
@@ -49,31 +41,17 @@ def intelligent_agent(observation):
         category = "replacement"
         reasoning.append("Product detected")
 
-    # =========================
-    # VAGUE HANDLING
-    # =========================
-
     elif any(w in text for w in ["idk", "something", "maybe", "issue", "??"]):
 
         if "working" in text:
             category = "replacement"
-            reasoning.append("Vague + working → replacement")
-
         elif "order" in text:
             category = "replacement"
-            reasoning.append("Vague + order → replacement")
-
         else:
             category = "replacement"
-            reasoning.append("Vague default → replacement")
 
     else:
         category = "replacement"
-        reasoning.append("Fallback")
-
-    # =========================
-    # ACTION
-    # =========================
 
     if category == "billing":
         action = "escalate"
@@ -82,15 +60,7 @@ def intelligent_agent(observation):
     else:
         action = "process_replacement"
 
-    # =========================
-    # POLICY
-    # =========================
-
     policy = "priority" if (is_urgent or days >= 10) else "standard"
-
-    # =========================
-    # RESPONSE (MAX SCORE)
-    # =========================
 
     response = "We are sorry for the inconvenience. "
     response += "We understand your concern. "
@@ -100,10 +70,8 @@ def intelligent_agent(observation):
 
     if category == "refund":
         response += f"Since it has been {days} days, we will process your refund. "
-
     elif category == "replacement":
         response += "We will resolve this by arranging a replacement. "
-
     elif category == "billing":
         response += "We will investigate and resolve the billing issue immediately. "
 
@@ -115,80 +83,51 @@ def intelligent_agent(observation):
 
 
 # =========================
-# RUN EPISODE
+# RUN EPISODE (ONLY LOG FIX)
 # =========================
 
-def run_episode(env):
+def run_episode(env, episode_id):
     obs = env.reset()
-    ticket = obs.metadata
 
-    print("\n🎯 NEW TICKET")
-    print(f"Text: {obs.ticket_text}")
+    print(f"[STEP] episode={episode_id} step=0 observation='{obs.ticket_text}'")
 
     category, action, response, policy, confidence, reasoning = intelligent_agent(obs)
 
     for step in range(1, MAX_STEPS + 1):
 
         if step == 1:
-            act = HackathonAction(
-                category=category,
-                policy=policy,
-                type="classify",
-                response=""
-            )
-
+            act = HackathonAction(category=category, policy=policy, type="classify", response="")
         elif step == 2:
-            act = HackathonAction(
-                category=category,
-                policy=policy,
-                type="investigate",
-                response=""
-            )
-
+            act = HackathonAction(category=category, policy=policy, type="investigate", response="")
         else:
-            act = HackathonAction(
-                category=category,
-                policy=policy,
-                type=action,
-                response=response
-            )
+            act = HackathonAction(category=category, policy=policy, type=action, response=response)
 
         obs = env.step(act)
-        print(f"Step {step} Reward: {obs.reward}")
+
+        # ✅ REQUIRED FORMAT
+        print(f"[STEP] episode={episode_id} step={step} reward={obs.reward}")
 
         if obs.done:
             break
-
-    print("\n✅ FINAL OUTPUT")
-    print("Category:", category)
-    print("Action:", action)
-    print("Policy:", policy)
-    print("Confidence:", confidence)
-    print("Response:", response)
-    print("Reasoning:", reasoning)
-    print("Final Score:", obs.reward)
 
     return obs.reward
 
 
 # =========================
-# MAIN
+# MAIN (FIXED FORMAT)
 # =========================
 
 def main():
-    # ✅ ADD THIS (helps debugging in eval)
-    print("\n🔧 CONFIG")
-    print("API_BASE_URL:", API_BASE_URL)
-    print("MODEL_NAME:", MODEL_NAME)
+    print("[START]")
 
     env = HackathonEnvironment()
     scores = []
 
-    for _ in range(3):  # ✅ matches 3 deterministic tasks
-        scores.append(run_episode(env))
+    for i in range(3):
+        score = run_episode(env, i + 1)
+        scores.append(score)
 
-    print("\n📊 SCORES:", scores)
-    print("AVERAGE:", round(sum(scores) / len(scores), 2))
+    print(f"[END] avg_score={round(sum(scores)/len(scores), 2)}")
 
 
 if __name__ == "__main__":
