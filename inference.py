@@ -5,53 +5,32 @@ from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
 
 # =========================
-# STRICT ENV
+# STRICT ENV (NO get())
 # =========================
-API_BASE_URL = os.environ.get("API_BASE_URL")
-API_KEY = os.environ.get("API_KEY")
+if "API_BASE_URL" not in os.environ or "API_KEY" not in os.environ:
+    raise RuntimeError("Missing API_BASE_URL or API_KEY")
 
-client = None
-
-# =========================
-# INIT CLIENT (NO FALLBACK)
-# =========================
-def init_client():
-    global client
-    try:
-        client = OpenAI(
-            base_url=API_BASE_URL,
-            api_key=API_KEY
-        )
-        print("[OK] Client initialized with proxy")
-    except Exception as e:
-        print("[ERROR] Client init failed:", str(e))
-        client = None
-
+API_BASE_URL = os.environ["API_BASE_URL"]
+API_KEY = os.environ["API_KEY"]
 
 # =========================
-# FORCE API CALL (RETRY)
+# STRICT CLIENT (NO FALLBACK)
+# =========================
+client = OpenAI(
+    base_url=API_BASE_URL,
+    api_key=API_KEY
+)
+
+# =========================
+# FORCE PROXY CALL (CRITICAL)
 # =========================
 def ping_llm():
-    global client
-
-    if client is None:
-        print("[ERROR] Client not initialized")
-        return
-
-    for i in range(3):  
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Reply OK"}],
-                max_tokens=5
-            )
-            print("[SUCCESS] Proxy API call done")
-            return
-
-        except Exception as e:
-            print(f"[RETRY {i+1}] API call failed:", str(e))
-
-    print("[FINAL ERROR] API call never succeeded")
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": "Reply only OK"}],
+        max_tokens=5
+    )
+    print("[SUCCESS] Proxy API call done")
 
 
 MAX_STEPS = 3
@@ -66,11 +45,9 @@ def intelligent_agent(observation):
     if any(w in text for w in ["charge", "billing", "payment"]):
         category = "billing"
         action = "escalate"
-
     elif any(w in text for w in ["not received", "lost", "delay", "package"]):
         category = "refund"
         action = "process_refund"
-
     else:
         category = "replacement"
         action = "process_replacement"
@@ -97,7 +74,6 @@ def run_episode(env, episode_num):
     category, action, response, policy = intelligent_agent(obs)
 
     for step in range(1, MAX_STEPS + 1):
-
         if step == 1:
             act = HackathonAction(category=category, policy=policy, type="classify", response="")
         elif step == 2:
@@ -116,8 +92,7 @@ def run_episode(env, episode_num):
 def main():
     print("[START]")
 
-    init_client()
-
+    # ❗ THIS LINE MAKES OR BREAKS PHASE 2
     ping_llm()
 
     env = HackathonEnvironment()
