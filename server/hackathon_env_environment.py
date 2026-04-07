@@ -2,11 +2,13 @@ from uuid import uuid4
 from dataclasses import dataclass
 
 from server.models import HackathonAction, HackathonObservation
-# ✅ Local State (instead of openenv)
+
+
 @dataclass
 class State:
     episode_id: str
     step_count: int
+
 
 class HackathonEnvironment:
 
@@ -17,7 +19,6 @@ class HackathonEnvironment:
         self.max_steps = 3
         self.current_ticket = None
 
-        # ✅ FIXED DATASET (DETERMINISTIC)
         self.tasks = [
             {
                 "id": "easy",
@@ -47,7 +48,6 @@ class HackathonEnvironment:
     def reset(self):
         self._state = State(episode_id=str(uuid4()), step_count=0)
 
-        # ✅ deterministic cycling
         self.current_ticket = self.tasks[self.task_index]
         self.task_index = (self.task_index + 1) % len(self.tasks)
 
@@ -59,6 +59,10 @@ class HackathonEnvironment:
         )
 
     def step(self, action: HackathonAction):
+        # ✅ FIX: ensure reset if step called first
+        if self.current_ticket is None:
+            self.reset()
+
         self._state.step_count += 1
         step = self._state.step_count
 
@@ -66,32 +70,19 @@ class HackathonEnvironment:
         reward = 0.0
         response = (action.response or "").lower()
 
-        # =========================
-        # STEP 1: CATEGORY (HIGH IMPACT)
-        # =========================
+        # STEP 1: CATEGORY
         if step == 1:
-            if action.category == gt["category"]:
-                reward = 1.0
-            else:
-                reward = 0.0
+            reward = 1.0 if action.category == gt["category"] else 0.0
 
-        # =========================
         # STEP 2: INVESTIGATION
-        # =========================
         elif step == 2:
-            if action.type == "investigate":
-                reward = 1.0
-            else:
-                reward = 0.0
+            reward = 1.0 if action.type == "investigate" else 0.0
 
-        # =========================
-        # STEP 3: FINAL RESPONSE QUALITY
-        # =========================
+        # STEP 3: FINAL RESPONSE
         elif step == 3:
 
             score = 0.0
 
-            # correct action mapping
             if gt["category"] == "refund" and action.type == "process_refund":
                 score += 0.3
             elif gt["category"] == "replacement" and action.type == "process_replacement":
@@ -99,19 +90,15 @@ class HackathonEnvironment:
             elif gt["category"] == "billing" and action.type == "escalate":
                 score += 0.3
 
-            # empathy
             if "sorry" in response:
                 score += 0.2
 
-            # understanding
             if "understand" in response:
                 score += 0.2
 
-            # personalization
             if str(gt["days"]) in response:
                 score += 0.15
 
-            # urgency handling
             if gt["is_urgent"] and "priority" in response:
                 score += 0.15
 
