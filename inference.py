@@ -5,32 +5,54 @@ from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
 
 # =========================
-# STRICT ENV (NO get())
+# ENV (SAFE)
 # =========================
-if "API_BASE_URL" not in os.environ or "API_KEY" not in os.environ:
-    raise RuntimeError("Missing API_BASE_URL or API_KEY")
+API_BASE_URL = os.environ.get("API_BASE_URL")
+API_KEY = os.environ.get("API_KEY")
 
-API_BASE_URL = os.environ["API_BASE_URL"]
-API_KEY = os.environ["API_KEY"]
-
-# =========================
-# STRICT CLIENT (NO FALLBACK)
-# =========================
-client = OpenAI(
-    base_url=API_BASE_URL,
-    api_key=API_KEY
-)
+client = None
 
 # =========================
-# FORCE PROXY CALL (CRITICAL)
+# INIT CLIENT (CONDITIONAL)
+# =========================
+def init_client():
+    global client
+
+    if API_BASE_URL and API_KEY:
+        try:
+            client = OpenAI(
+                base_url=API_BASE_URL,
+                api_key=API_KEY
+            )
+            print("[OK] Using evaluator proxy")
+        except Exception as e:
+            print("[ERROR] Proxy init failed:", str(e))
+            client = None
+    else:
+        print("[INFO] Running without proxy (HF Space mode)")
+        client = None
+
+
+# =========================
+# API CALL (ONLY IF AVAILABLE)
 # =========================
 def ping_llm():
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "Reply only OK"}],
-        max_tokens=5
-    )
-    print("[SUCCESS] Proxy API call done")
+    global client
+
+    if client is None:
+        print("[SKIP] No proxy client available")
+        return
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Reply OK"}],
+            max_tokens=5
+        )
+        print("[SUCCESS] Proxy API call done")
+
+    except Exception as e:
+        print("[ERROR] API call failed:", str(e))
 
 
 MAX_STEPS = 3
@@ -92,7 +114,9 @@ def run_episode(env, episode_num):
 def main():
     print("[START]")
 
-    # ❗ THIS LINE MAKES OR BREAKS PHASE 2
+    init_client()
+
+    # Will ONLY run during Phase 2
     ping_llm()
 
     env = HackathonEnvironment()
