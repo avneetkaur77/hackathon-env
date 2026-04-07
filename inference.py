@@ -1,20 +1,15 @@
-
 import os
 from openai import OpenAI
 from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
 
-# =========================
-# ENV
-# =========================
 API_BASE_URL = os.environ.get("API_BASE_URL")
 API_KEY = os.environ.get("API_KEY")
+MODEL_NAME = os.environ.get("MODEL_NAME")
 
 client = None
 
-# =========================
-# INIT CLIENT
-# =========================
+
 def init_client():
     global client
 
@@ -29,53 +24,31 @@ def init_client():
             print("[ERROR] Client init failed:", str(e))
             client = None
     else:
-        print("[INFO] HF Space mode (no proxy)")
+        print("[INFO] No API config found")
         client = None
 
 
-# =========================
-# FORCE API CALL (RETRY + REINIT)
-# =========================
 def ping_llm():
     global client
 
-    # Try to re-init if needed
-    if client is None and API_BASE_URL and API_KEY:
-        try:
-            client = OpenAI(
-                base_url=API_BASE_URL,
-                api_key=API_KEY
-            )
-            print("[REINIT] Client created inside ping")
-        except Exception as e:
-            print("[ERROR] Re-init failed:", str(e))
-            return
-
     if client is None:
-        print("[SKIP] No proxy env available")
+        print("[SKIP] No client available")
         return
 
-    # Retry API call
-    for i in range(3):
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Reply OK"}],
-                max_tokens=5
-            )
-            print("[SUCCESS] Proxy API call done")
-            return
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME or "gpt-4o-mini",  # ✅ FIX
+            messages=[{"role": "user", "content": "Reply OK"}],
+            max_tokens=5
+        )
+        print("[SUCCESS] API call done")
 
-        except Exception as e:
-            print(f"[RETRY {i+1}] API failed:", str(e))
-
-    print("[FINAL ERROR] API call never succeeded")
+    except Exception as e:
+        print("[ERROR] API call failed:", str(e))
 
 
-# =========================
-# AGENT LOGIC
-# =========================
 MAX_STEPS = 3
+
 
 def intelligent_agent(observation):
     ticket = observation.metadata
@@ -97,6 +70,8 @@ def intelligent_agent(observation):
     policy = "priority" if (is_urgent or days >= 10) else "standard"
 
     response = "We are sorry for the inconvenience. "
+    response += "We understand your issue. "
+
     if policy == "priority":
         response += "This case has been marked as priority. "
 
@@ -131,15 +106,10 @@ def run_episode(env):
     return obs.reward
 
 
-# =========================
-# MAIN
-# =========================
 def main():
     print("[START]")
 
     init_client()
-
-    # ✅ ALWAYS attempt API call
     ping_llm()
 
     env = HackathonEnvironment()
@@ -151,4 +121,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
