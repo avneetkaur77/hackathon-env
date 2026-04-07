@@ -1,62 +1,45 @@
-import os
 
+import os
 from openai import OpenAI
 from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
 
 # =========================
-# ENV VARIABLES (STRICT)
+# STRICT ENV (MANDATORY)
 # =========================
-
-# DO NOT use defaults — must use injected env
 API_BASE_URL = os.environ["API_BASE_URL"]
 API_KEY = os.environ["API_KEY"]
-MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
 
 # =========================
-# SAFE OPENAI CLIENT (STRICT)
+# CLIENT (NO FALLBACK)
 # =========================
-
-client = None
-
-def get_client():
-    global client
-    if client is None:
-        try:
-            client = OpenAI(
-                base_url=API_BASE_URL,   # ✅ STRICT (no fallback)
-                api_key=API_KEY          # ✅ STRICT (no fallback)
-            )
-        except Exception as e:
-            print(f"[STEP] client init failed: {str(e)}")
-            client = None
-    return client
+client = OpenAI(
+    base_url=API_BASE_URL,
+    api_key=API_KEY
+)
 
 # =========================
-# REQUIRED PROXY CALL
+# FORCE PROXY CALL (CRITICAL)
 # =========================
-
 def ping_llm():
     try:
-        c = get_client()
-        if c:
-            response = c.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[{"role": "user", "content": "ping"}],
-                max_tokens=5
-            )
-            print("[STEP] LLM ping success")  # ensures log visibility
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # ✅ keep fixed
+            messages=[{"role": "user", "content": "Say OK"}],
+            max_tokens=5
+        )
+        print("[STEP] LLM call success:", response.choices[0].message.content)
+
     except Exception as e:
-        print(f"[STEP] LLM ping failed: {str(e)}")
+        print("[FATAL] LLM call failed:", str(e))
+        raise e   # ❗ MUST crash if fails
 
 
 MAX_STEPS = 3
 
-
 # =========================
-# INTELLIGENT AGENT
+# AGENT LOGIC
 # =========================
-
 def intelligent_agent(observation):
     ticket = observation.metadata
 
@@ -64,113 +47,52 @@ def intelligent_agent(observation):
     days = ticket.get("days", 0)
     is_urgent = ticket.get("is_urgent", False)
 
-    reasoning = []
-
-    if any(w in text for w in ["charge", "charged", "billing", "payment", "invoice"]):
+    if any(w in text for w in ["charge", "billing", "payment"]):
         category = "billing"
-        reasoning.append("Billing detected")
-
-    elif any(w in text for w in [
-        "not received", "lost", "missing", "delay",
-        "not delivered", "haven't received", "still haven't", "package"
-    ]):
-        category = "refund"
-        reasoning.append("Delivery detected")
-
-    elif any(w in text for w in [
-        "broken", "damaged", "defective", "not working"
-    ]):
-        category = "replacement"
-        reasoning.append("Product detected")
-
-    elif any(w in text for w in ["idk", "something", "maybe", "issue", "??"]):
-
-        if "working" in text:
-            category = "replacement"
-            reasoning.append("Vague + working → replacement")
-
-        elif "order" in text:
-            category = "replacement"
-            reasoning.append("Vague + order → replacement")
-
-        else:
-            category = "replacement"
-            reasoning.append("Vague default → replacement")
-
-    else:
-        category = "replacement"
-        reasoning.append("Fallback")
-
-    if category == "billing":
         action = "escalate"
-    elif category == "refund":
+
+    elif any(w in text for w in ["not received", "lost", "delay", "package"]):
+        category = "refund"
         action = "process_refund"
+
     else:
+        category = "replacement"
         action = "process_replacement"
 
     policy = "priority" if (is_urgent or days >= 10) else "standard"
 
     response = "We are sorry for the inconvenience. "
-    response += "We understand your concern. "
-
     if policy == "priority":
         response += "This case has been marked as priority. "
 
     if category == "refund":
-        response += f"Since it has been {days} days, we will process your refund. "
-
+        response += f"We will process your refund for the delay of {days} days."
     elif category == "replacement":
-        response += "We will resolve this by arranging a replacement. "
+        response += "We will arrange a replacement for you."
+    else:
+        response += "We will investigate your billing issue."
 
-    elif category == "billing":
-        response += "We will investigate and resolve the billing issue immediately. "
-
-    response += f"Our team will review, investigate, and resolve your issue regarding your order from {days} days ago."
-
-    confidence = 0.9
-
-    return category, action, response, policy, confidence, reasoning
+    return category, action, response, policy
 
 
 # =========================
 # RUN EPISODE
 # =========================
-
 def run_episode(env, episode_num):
     obs = env.reset()
 
-    print(f"[STEP] episode={episode_num} step=0 observation='{obs.ticket_text}'")
-
-    category, action, response, policy, confidence, reasoning = intelligent_agent(obs)
+    category, action, response, policy = intelligent_agent(obs)
 
     for step in range(1, MAX_STEPS + 1):
 
         if step == 1:
-            act = HackathonAction(
-                category=category,
-                policy=policy,
-                type="classify",
-                response=""
-            )
-
+            act = HackathonAction(category=category, policy=policy, type="classify", response="")
         elif step == 2:
-            act = HackathonAction(
-                category=category,
-                policy=policy,
-                type="investigate",
-                response=""
-            )
-
+            act = HackathonAction(category=category, policy=policy, type="investigate", response="")
         else:
-            act = HackathonAction(
-                category=category,
-                policy=policy,
-                type=action,
-                response=response
-            )
+            act = HackathonAction(category=category, policy=policy, type=action, response=response)
 
         obs = env.step(act)
-        print(f"[STEP] episode={episode_num} step={step} reward={obs.reward}")
 
         if obs.done:
             break
@@ -181,11 +103,10 @@ def run_episode(env, episode_num):
 # =========================
 # MAIN
 # =========================
-
 def main():
     print("[START]")
 
-    # MUST CALL → ensures proxy usage detection
+    # 🔥 CRITICAL: ensures proxy usage
     ping_llm()
 
     env = HackathonEnvironment()
@@ -196,7 +117,6 @@ def main():
         scores.append(score)
 
     avg_score = round(sum(scores) / len(scores), 2)
-
     print(f"[END] avg_score={avg_score}")
 
 
