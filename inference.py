@@ -5,10 +5,14 @@ from server.models import HackathonAction
 import traceback
 
 # =========================
-# GLOBALS
+# STRICT ENV VARS
 # =========================
-client = None
-MODEL_NAME = None
+API_BASE_URL = os.environ["API_BASE_URL"]  # must exist
+API_KEY = os.environ["API_KEY"]            # must exist
+MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
+
+# Initialize client with injected env vars (no hardcoded keys)
+client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
 # =========================
 # INTELLIGENT AGENT
@@ -17,13 +21,12 @@ def intelligent_agent(observation):
     ticket = observation.metadata or {}
     text = (ticket.get("text") or observation.ticket_text or "").strip()
 
-    # ❗ Validator requires LLM call inside agent loop
+    # ❗ Always call LLM inside agent loop
     res = client.responses.create(
         model=MODEL_NAME,
-        input=f"Classify into billing, refund, or replacement: {text}"
+        input=f"Classify into billing, refund, or replacement: {text if text else 'ping validator'}"
     )
 
-    # safely extract output
     try:
         output = res.output[0].content[0].text.lower()
     except Exception:
@@ -41,35 +44,26 @@ def intelligent_agent(observation):
 # =========================
 def run_episode(env, task_name="ticket_resolution"):
     print(f"[START] task={task_name}", flush=True)
-    try:
-        obs = env.reset()
-    except Exception:
-        traceback.print_exc()
-        return 0
-
+    obs = env.reset()
     total_reward, steps = 0, 0
 
     for step in range(3):
-        try:
-            category, action, response, policy = intelligent_agent(obs)
+        category, action, response, policy = intelligent_agent(obs)
 
-            if step == 0:
-                act = HackathonAction(category=category, policy=policy, type="classify", response="")
-            elif step == 1:
-                act = HackathonAction(category=category, policy=policy, type="investigate", response="")
-            else:
-                act = HackathonAction(category=category, policy=policy, type=action, response=response)
+        if step == 0:
+            act = HackathonAction(category=category, policy=policy, type="classify", response="")
+        elif step == 1:
+            act = HackathonAction(category=category, policy=policy, type="investigate", response="")
+        else:
+            act = HackathonAction(category=category, policy=policy, type=action, response=response)
 
-            obs = env.step(act)
-            reward = getattr(obs, "reward", 0)
-            total_reward += reward
-            steps += 1
-            print(f"[STEP] step={steps} reward={reward}", flush=True)
+        obs = env.step(act)
+        reward = getattr(obs, "reward", 0)
+        total_reward += reward
+        steps += 1
+        print(f"[STEP] step={steps} reward={reward}", flush=True)
 
-            if getattr(obs, "done", False):
-                break
-        except Exception:
-            traceback.print_exc()
+        if getattr(obs, "done", False):
             break
 
     print(f"[END] task={task_name} score={total_reward} steps={steps}", flush=True)
@@ -79,28 +73,8 @@ def run_episode(env, task_name="ticket_resolution"):
 # MAIN
 # =========================
 def main():
-    global client, MODEL_NAME
     print("[START] task=boot", flush=True)
 
-    # ❗ Strictly use injected env vars
-    try:
-        API_BASE_URL = os.environ["API_BASE_URL"]
-        API_KEY = os.environ["API_KEY"]
-        MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
-    except KeyError as ke:
-        print(f"[FATAL] Missing env var: {ke}", flush=True)
-        return
-
-    # ❗ Wrap client init to prevent unhandled exceptions
-    try:
-        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-        print("[CLIENT INIT SUCCESS]", flush=True)
-    except Exception:
-        print("[CLIENT INIT FAILED]", flush=True)
-        traceback.print_exc()
-        return
-
-    # ❗ Wrap environment creation
     try:
         env = HackathonEnvironment()
     except Exception:
@@ -108,7 +82,7 @@ def main():
         traceback.print_exc()
         return
 
-    # Run 3 episodes
+    # Run episodes with guaranteed LLM calls in loop
     for _ in range(3):
         run_episode(env)
 
