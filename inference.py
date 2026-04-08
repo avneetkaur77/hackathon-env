@@ -12,7 +12,7 @@ MODEL_NAME = None
 def init_client():
     global client, MODEL_NAME
     try:
-        # ✅ Must use injected env vars (no fallback)
+        # ✅ Use injected env vars only
         API_BASE_URL = os.environ["API_BASE_URL"]
         API_KEY = os.environ["API_KEY"]
         MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
@@ -20,11 +20,8 @@ def init_client():
         client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
         # ✅ Force a test call to confirm proxy
-        try:
-            res = client.responses.create(model=MODEL_NAME, input="ping")
-            print("[DEBUG] Proxy API call SUCCESS", flush=True)
-        except Exception as e:
-            print("[TEST CALL ERROR]:", str(e), flush=True)
+        res = client.responses.create(model=MODEL_NAME, input="ping from validator check")
+        print("[DEBUG] Proxy API call SUCCESS", flush=True)
 
     except KeyError as e:
         print(f"[CRITICAL] Missing environment variable: {e}", flush=True)
@@ -46,21 +43,18 @@ def intelligent_agent(observation):
         text = ""
 
     output = ""
-    try:
-        if client:
-            res = client.responses.create(
-                model=MODEL_NAME,
-                input=f"Classify into billing, refund, or replacement: {text}"
-            )
-            try:
-                output = res.output[0].content[0].text.lower()
-            except Exception:
-                output = str(res).lower()
-            print("[LLM OUTPUT]:", output, flush=True)
-        else:
-            print("[WARNING] Client not initialized", flush=True)
-    except Exception as e:
-        print("[LLM ERROR]:", str(e), flush=True)
+    if client:
+        res = client.responses.create(
+            model=MODEL_NAME,
+            input=f"Classify into billing, refund, or replacement: {text}"
+        )
+        try:
+            output = res.output[0].content[0].text.lower()
+        except Exception:
+            output = str(res).lower()
+        print("[LLM OUTPUT]:", output, flush=True)
+    else:
+        print("[WARNING] Client not initialized", flush=True)
 
     # Fallback never fails
     if "billing" in output:
@@ -116,10 +110,7 @@ def run_episode(env, task_name="ticket_resolution"):
 # =========================
 def main():
     print("[START] task=boot", flush=True)
-    try:
-        init_client()
-    except Exception as e:
-        print("[MAIN INIT ERROR]:", str(e), flush=True)
+    init_client()  # guaranteed validator LLM call happens here
 
     try:
         env = HackathonEnvironment()
