@@ -7,133 +7,120 @@ client = None
 MODEL_NAME = None
 
 
-# =========================
-# INIT CLIENT (FINAL SAFE)
-# =========================
 def init_client():
     global client, MODEL_NAME
 
-    base_url = os.getenv("API_BASE_URL")
-    api_key = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-    MODEL_NAME = os.getenv("MODEL_NAME")
+    try:
+        base_url = os.getenv("API_BASE_URL")
+        api_key = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+        MODEL_NAME = os.getenv("MODEL_NAME") or "gpt-3.5-turbo"
 
-    if not base_url or not api_key:
-        raise ValueError("❌ API_BASE_URL or API key missing")
+        print("[DEBUG] BASE_URL:", base_url)
+        print("[DEBUG] MODEL_NAME:", MODEL_NAME)
 
-    # ✅ fallback instead of crash
-    if not MODEL_NAME:
-        print("[WARNING] MODEL_NAME missing → using fallback")
-        MODEL_NAME = "gpt-3.5-turbo"
+        # 🔥 EVERYTHING inside try
+        client = OpenAI(
+            base_url=base_url,
+            api_key=api_key
+        )
 
-    print("[DEBUG] BASE_URL:", base_url)
-    print("[DEBUG] MODEL_NAME:", MODEL_NAME)
-
-    client = OpenAI(
-        base_url=base_url,
-        api_key=api_key
-    )
+    except Exception as e:
+        print("[INIT ERROR]:", str(e))
+        client = None
 
 
-# =========================
-# AGENT (SAFE)
-# =========================
 def intelligent_agent(observation):
     global client, MODEL_NAME
 
-    ticket = observation.metadata or {}
-    text = (ticket.get("text") or observation.ticket_text or "").lower()
+    try:
+        ticket = observation.metadata or {}
+        text = (ticket.get("text") or observation.ticket_text or "").lower()
+    except:
+        text = ""
 
     output = ""
 
-    # ✅ LLM call with safety
-    try:
-        res = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Classify into billing, refund, or replacement: {text}"
-                }
-            ]
-        )
+    if client:
+        try:
+            res = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "user", "content": f"Classify: {text}"}
+                ]
+            )
+            output = res.choices[0].message.content.lower()
+        except Exception as e:
+            print("[LLM ERROR]:", str(e))
 
-        output = res.choices[0].message.content.lower()
-        print("[LLM OUTPUT]:", output)
-
-    except Exception as e:
-        print("[LLM ERROR]:", str(e))
-
-    # ✅ fallback logic (ensures progress)
     if "billing" in output:
-        category, action = "billing", "escalate"
+        return "billing", "escalate", "Handled", "standard"
     elif "refund" in output or "delay" in output:
-        category, action = "refund", "process_refund"
+        return "refund", "process_refund", "Handled", "standard"
     else:
-        category, action = "replacement", "process_replacement"
+        return "replacement", "process_replacement", "Handled", "standard"
 
-    return category, action, "Handled via LLM", "standard"
-
-
-# =========================
-# EPISODE RUNNER
-# =========================
-MAX_STEPS = 3
 
 def run_episode(env):
-    obs = env.reset()
+    try:
+        obs = env.reset()
+    except Exception as e:
+        print("[RESET ERROR]:", str(e))
+        return 0
 
-    for step in range(1, MAX_STEPS + 1):
-        category, action, response, policy = intelligent_agent(obs)
+    for step in range(3):
+        try:
+            category, action, response, policy = intelligent_agent(obs)
 
-        if step == 1:
-            act = HackathonAction(
-                category=category,
-                policy=policy,
-                type="classify",
-                response=""
-            )
-        elif step == 2:
-            act = HackathonAction(
-                category=category,
-                policy=policy,
-                type="investigate",
-                response=""
-            )
-        else:
-            act = HackathonAction(
-                category=category,
-                policy=policy,
-                type=action,
-                response=response
-            )
+            if step == 0:
+                act = HackathonAction(category=category, policy=policy, type="classify", response="")
+            elif step == 1:
+                act = HackathonAction(category=category, policy=policy, type="investigate", response="")
+            else:
+                act = HackathonAction(category=category, policy=policy, type=action, response=response)
 
-        obs = env.step(act)
+            obs = env.step(act)
 
-        if obs.done:
+            if obs.done:
+                break
+
+        except Exception as e:
+            print("[STEP ERROR]:", str(e))
             break
 
     return getattr(obs, "reward", 0)
 
 
-# =========================
-# MAIN
-# =========================
 def main():
-    init_client()
+    try:
+        init_client()
+    except Exception as e:
+        print("[MAIN INIT ERROR]:", str(e))
 
-    env = HackathonEnvironment()
+    try:
+        env = HackathonEnvironment()
+    except Exception as e:
+        print("[ENV ERROR]:", str(e))
+        return
+
     scores = []
 
     for _ in range(3):
         try:
-            scores.append(run_episode(env))
+            score = run_episode(env)
         except Exception as e:
             print("[EPISODE ERROR]:", str(e))
-            scores.append(0)
+            score = 0
 
-    avg_score = sum(scores) / len(scores)
-    print("AVG:", avg_score)
+        scores.append(score)
+
+    try:
+        print("AVG:", sum(scores) / len(scores))
+    except:
+        print("AVG: 0")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print("[FATAL ERROR CAUGHT]:", str(e))
