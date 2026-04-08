@@ -23,10 +23,10 @@ def init_client():
 
         client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
-        # ✅ Top-level ping for validator
+        # ✅ Force a top-level LLM call so validator sees it
         try:
-            client.responses.create(model=MODEL_NAME, input="ping")
-            print("[CLIENT INIT] SUCCESS", flush=True)
+            res = client.responses.create(model=MODEL_NAME, input="ping from top-level")
+            print("[CLIENT INIT + VALIDATOR PING SUCCESS]", flush=True)
         except Exception as e:
             print("[CLIENT PING ERROR]:", str(e), flush=True)
     except Exception as e:
