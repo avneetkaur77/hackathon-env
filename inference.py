@@ -6,84 +6,43 @@ from server.models import HackathonAction
 client = None
 MODEL_NAME = None
 
-
 # =========================
 # INIT CLIENT (STRICT PROXY)
 # =========================
 def init_client():
     global client, MODEL_NAME
 
-    try:
-        base_url = os.environ.get("API_BASE_URL")
-        api_key = os.environ.get("API_KEY")  # ✅ ONLY THIS
-        MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
+    # ❌ must crash if missing
+    API_BASE_URL = os.environ["API_BASE_URL"]
+    API_KEY = os.environ["API_KEY"]
+    MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
 
-        print("[DEBUG] BASE_URL:", base_url, flush=True)
-        print("[DEBUG] MODEL_NAME:", MODEL_NAME, flush=True)
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
-        if not base_url or not api_key:
-            print("[CRITICAL] Missing API_BASE_URL or API_KEY", flush=True)
-            client = None
-            return
-
-        client = OpenAI(
-            base_url=base_url,
-            api_key=api_key
-        )
-
-        # ✅ FORCE PROXY CALL (USING responses API)
-        try:
-            res = client.responses.create(
-                model=MODEL_NAME,
-                input="ping"
-            )
-            print("[DEBUG] Proxy API call SUCCESS", flush=True)
-        except Exception as e:
-            print("[TEST CALL ERROR]:", str(e), flush=True)
-
-    except Exception as e:
-        print("[INIT ERROR]:", str(e), flush=True)
-        client = None
+    # ✅ force a test call to confirm proxy
+    res = client.responses.create(model=MODEL_NAME, input="ping")
+    print("[DEBUG] Proxy API call SUCCESS", flush=True)
 
 
 # =========================
-# AGENT (SAFE + LLM + FALLBACK)
+# AGENT
 # =========================
 def intelligent_agent(observation):
     global client, MODEL_NAME
 
+    ticket = observation.metadata or {}
+    text = (ticket.get("text") or observation.ticket_text or "").lower()
+
+    # ✅ call proxy directly
+    res = client.responses.create(
+        model=MODEL_NAME,
+        input=f"Classify into billing, refund, or replacement: {text}"
+    )
     try:
-        ticket = observation.metadata or {}
-        text = (ticket.get("text") or observation.ticket_text or "").lower()
-    except Exception as e:
-        print("[TEXT ERROR]:", str(e), flush=True)
-        text = ""
+        output = res.output[0].content[0].text.lower()
+    except Exception:
+        output = str(res).lower()
 
-    output = ""
-
-    # ✅ USE responses API (CRITICAL FIX)
-    try:
-        if client:
-            res = client.responses.create(
-                model=MODEL_NAME,
-                input=f"Classify into billing, refund, or replacement: {text}"
-            )
-
-            # ✅ SAFE PARSING
-            try:
-                output = res.output[0].content[0].text.lower()
-            except Exception:
-                output = str(res).lower()
-
-            print("[LLM OUTPUT]:", output, flush=True)
-
-        else:
-            print("[WARNING] Client not initialized", flush=True)
-
-    except Exception as e:
-        print("[LLM ERROR]:", str(e), flush=True)
-
-    # ✅ FALLBACK (NEVER FAIL)
     if "billing" in output:
         return "billing", "escalate", "Handled", "standard"
     elif "refund" in output or "delay" in output:
@@ -93,77 +52,44 @@ def intelligent_agent(observation):
 
 
 # =========================
-# RUN EPISODE (STRUCTURED OUTPUT)
+# RUN EPISODE
 # =========================
 def run_episode(env, task_name="ticket_resolution"):
-    try:
-        print(f"[START] task={task_name}", flush=True)
-        obs = env.reset()
-    except Exception as e:
-        print("[RESET ERROR]:", str(e), flush=True)
-        print("[STEP] step=1 reward=0", flush=True)
-        print(f"[END] task={task_name} score=0 steps=1", flush=True)
-        return 0
-
+    print(f"[START] task={task_name}", flush=True)
+    obs = env.reset()
     total_reward = 0
     steps = 0
 
     for step in range(3):
-        try:
-            category, action, response, policy = intelligent_agent(obs)
+        category, action, response, policy = intelligent_agent(obs)
+        if step == 0:
+            act = HackathonAction(category=category, policy=policy, type="classify", response="")
+        elif step == 1:
+            act = HackathonAction(category=category, policy=policy, type="investigate", response="")
+        else:
+            act = HackathonAction(category=category, policy=policy, type=action, response=response)
 
-            if step == 0:
-                act = HackathonAction(category=category, policy=policy, type="classify", response="")
-            elif step == 1:
-                act = HackathonAction(category=category, policy=policy, type="investigate", response="")
-            else:
-                act = HackathonAction(category=category, policy=policy, type=action, response=response)
-
-            obs = env.step(act)
-
-            reward = getattr(obs, "reward", 0)
-            total_reward += reward
-            steps += 1
-
-            print(f"[STEP] step={steps} reward={reward}", flush=True)
-
-            if getattr(obs, "done", False):
-                break
-
-        except Exception as e:
-            print("[STEP ERROR]:", str(e), flush=True)
+        obs = env.step(act)
+        reward = getattr(obs, "reward", 0)
+        total_reward += reward
+        steps += 1
+        print(f"[STEP] step={steps} reward={reward}", flush=True)
+        if getattr(obs, "done", False):
             break
 
     print(f"[END] task={task_name} score={total_reward} steps={steps}", flush=True)
-
     return total_reward
 
 
 # =========================
-# MAIN (GUARANTEED OUTPUT)
+# MAIN
 # =========================
 def main():
     print("[START] task=boot", flush=True)
-
-    try:
-        init_client()
-    except Exception as e:
-        print("[MAIN INIT ERROR]:", str(e), flush=True)
-
-    try:
-        env = HackathonEnvironment()
-    except Exception as e:
-        print("[ENV ERROR]:", str(e), flush=True)
-        print("[STEP] step=1 reward=0", flush=True)
-        print("[END] task=boot score=0 steps=1", flush=True)
-        return
-
-    try:
-        for _ in range(3):
-            run_episode(env)
-    except Exception as e:
-        print("[RUN ERROR]:", str(e), flush=True)
-
+    init_client()
+    env = HackathonEnvironment()
+    for _ in range(3):
+        run_episode(env)
     print("[END] task=boot score=1 steps=1", flush=True)
 
 
@@ -171,8 +97,4 @@ def main():
 # ENTRYPOINT
 # =========================
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print("[FATAL ERROR]:", str(e), flush=True)
-        print("[END] task=boot score=0 steps=1", flush=True)
+    main()
