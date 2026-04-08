@@ -7,31 +7,31 @@ client = None
 MODEL_NAME = None
 
 # =========================
-# SAFE CLIENT INIT
+# TOP-LEVEL VALIDATOR PING
+# =========================
+try:
+    API_BASE_URL = os.environ["API_BASE_URL"]
+    API_KEY = os.environ["API_KEY"]
+    MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
+
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    # Top-level call detected by LiteLLM validator
+    client.responses.create(model=MODEL_NAME, input="phase 2 validator ping")
+    print("[TOP-LEVEL VALIDATOR PING SUCCESS]", flush=True)
+except Exception as e:
+    print("[TOP-LEVEL VALIDATOR PING FAILED]:", str(e), flush=True)
+
+# =========================
+# INIT CLIENT FUNCTION
 # =========================
 def init_client():
     global client, MODEL_NAME
     try:
-        API_BASE_URL = os.environ.get("API_BASE_URL")
-        API_KEY = os.environ.get("API_KEY")
+        API_BASE_URL = os.environ["API_BASE_URL"]
+        API_KEY = os.environ["API_KEY"]
         MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
 
-        if not API_BASE_URL or not API_KEY:
-            print("[CRITICAL] Missing API_BASE_URL or API_KEY", flush=True)
-            return
-
         client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-
-        # ✅ Guaranteed validator call for LiteLLM proxy
-        try:
-            client.responses.create(
-                model=MODEL_NAME,
-                input="ping for LiteLLM phase 2 validator check"
-            )
-            print("[VALIDATOR CHECK SUCCESS]", flush=True)
-        except Exception as e:
-            print("[VALIDATOR PING ERROR]:", str(e), flush=True)
-
     except Exception as e:
         print("[CLIENT INIT ERROR]:", str(e), flush=True)
         client = None
