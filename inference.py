@@ -8,7 +8,7 @@ MODEL_NAME = None
 
 
 # =========================
-# INIT CLIENT (ULTRA SAFE)
+# INIT CLIENT (SAFE + PROXY)
 # =========================
 def init_client():
     global client, MODEL_NAME
@@ -18,31 +18,31 @@ def init_client():
         api_key = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
         MODEL_NAME = os.getenv("MODEL_NAME") or "gpt-3.5-turbo"
 
-        print("[DEBUG] BASE_URL:", base_url)
-        print("[DEBUG] MODEL_NAME:", MODEL_NAME)
+        print("[DEBUG] BASE_URL:", base_url, flush=True)
+        print("[DEBUG] MODEL_NAME:", MODEL_NAME, flush=True)
 
         client = OpenAI(
             base_url=base_url,
             api_key=api_key
         )
 
-        # 🔥 FORCE ONE API CALL (VERY IMPORTANT FOR PROXY TRACKING)
+        # ✅ FORCE PROXY CALL (CRITICAL)
         try:
             client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=[{"role": "user", "content": "ping"}]
             )
-            print("[DEBUG] Test API call sent")
+            print("[DEBUG] Test API call sent", flush=True)
         except Exception as e:
-            print("[TEST CALL ERROR]:", str(e))
+            print("[TEST CALL ERROR]:", str(e), flush=True)
 
     except Exception as e:
-        print("[INIT ERROR]:", str(e))
+        print("[INIT ERROR]:", str(e), flush=True)
         client = None
 
 
 # =========================
-# AGENT (SAFE + ROBUST)
+# AGENT (SAFE + LLM + FALLBACK)
 # =========================
 def intelligent_agent(observation):
     global client, MODEL_NAME
@@ -51,12 +51,12 @@ def intelligent_agent(observation):
         ticket = observation.metadata or {}
         text = (ticket.get("text") or observation.ticket_text or "").lower()
     except Exception as e:
-        print("[TEXT ERROR]:", str(e))
+        print("[TEXT ERROR]:", str(e), flush=True)
         text = ""
 
     output = ""
 
-    # 🔥 ALWAYS TRY CALL (if client exists)
+    # ✅ TRY LLM CALL
     try:
         if client:
             res = client.chat.completions.create(
@@ -66,13 +66,13 @@ def intelligent_agent(observation):
                 ]
             )
             output = res.choices[0].message.content.lower()
-            print("[LLM OUTPUT]:", output)
+            print("[LLM OUTPUT]:", output, flush=True)
         else:
-            print("[WARNING] Client not available")
+            print("[WARNING] Client not available", flush=True)
     except Exception as e:
-        print("[LLM ERROR]:", str(e))
+        print("[LLM ERROR]:", str(e), flush=True)
 
-    # ✅ fallback logic (never fails)
+    # ✅ FALLBACK (NEVER FAIL)
     if "billing" in output:
         return "billing", "escalate", "Handled", "standard"
     elif "refund" in output or "delay" in output:
@@ -82,14 +82,19 @@ def intelligent_agent(observation):
 
 
 # =========================
-# EPISODE RUNNER (SAFE)
+# RUN EPISODE (WITH STRUCTURED OUTPUT)
 # =========================
-def run_episode(env):
+def run_episode(env, task_name="ticket_resolution"):
     try:
+        print(f"[START] task={task_name}", flush=True)
         obs = env.reset()
     except Exception as e:
-        print("[RESET ERROR]:", str(e))
+        print("[RESET ERROR]:", str(e), flush=True)
+        print(f"[END] task={task_name} score=0 steps=0", flush=True)
         return 0
+
+    total_reward = 0
+    steps = 0
 
     for step in range(3):
         try:
@@ -104,58 +109,53 @@ def run_episode(env):
 
             obs = env.step(act)
 
+            reward = getattr(obs, "reward", 0)
+            total_reward += reward
+            steps += 1
+
+            # ✅ REQUIRED FORMAT
+            print(f"[STEP] step={steps} reward={reward}", flush=True)
+
             if obs.done:
                 break
 
         except Exception as e:
-            print("[STEP ERROR]:", str(e))
+            print("[STEP ERROR]:", str(e), flush=True)
             break
 
-    try:
-        return getattr(obs, "reward", 0)
-    except:
-        return 0
+    # ✅ REQUIRED FORMAT
+    print(f"[END] task={task_name} score={total_reward} steps={steps}", flush=True)
+
+    return total_reward
 
 
 # =========================
-# MAIN (NEVER FAIL)
+# MAIN (SAFE)
 # =========================
 def main():
     try:
         init_client()
     except Exception as e:
-        print("[MAIN INIT ERROR]:", str(e))
+        print("[MAIN INIT ERROR]:", str(e), flush=True)
 
     try:
         env = HackathonEnvironment()
     except Exception as e:
-        print("[ENV ERROR]:", str(e))
+        print("[ENV ERROR]:", str(e), flush=True)
         return
-
-    scores = []
 
     for _ in range(3):
         try:
-            score = run_episode(env)
+            run_episode(env)
         except Exception as e:
-            print("[EPISODE ERROR]:", str(e))
-            score = 0
-
-        scores.append(score)
-
-    try:
-        avg = sum(scores) / len(scores) if scores else 0
-        print("AVG:", avg)
-    except Exception as e:
-        print("[AVG ERROR]:", str(e))
-        print("AVG: 0")
+            print("[EPISODE ERROR]:", str(e), flush=True)
 
 
 # =========================
-# ENTRYPOINT (FULL GUARD)
+# ENTRYPOINT
 # =========================
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print("[FATAL ERROR CAUGHT]:", str(e))
+        print("[FATAL ERROR]:", str(e), flush=True)
