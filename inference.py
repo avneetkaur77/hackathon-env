@@ -49,8 +49,7 @@ def run_episode(env, client, model_name):
 # =========================
 def main():
     env = HackathonEnvironment()
-    # ✅ Use hackathon-provided client (proxy) — do NOT init OpenAI directly
-    client = env.get_client()
+    client = env.client  # ✅ Use the environment-injected client
     model_name = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
 
     total_score = 0
