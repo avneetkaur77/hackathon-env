@@ -16,13 +16,13 @@ def intelligent_agent(observation):
     ticket = observation.metadata or {}
     text = (ticket.get("text") or observation.ticket_text or "").strip()
 
-    # ❗ Validator requires LLM call inside step loop
+    # LLM call happens inside agent loop for validator
     res = client.responses.create(
         model=MODEL_NAME,
         input=f"Classify into billing, refund, or replacement: {text}"
     )
 
-    # extract text safely
+    # safely extract output text
     try:
         output = res.output[0].content[0].text.lower()
     except Exception:
@@ -78,7 +78,7 @@ def main():
     API_KEY = os.environ["API_KEY"]
     MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
 
-    # Initialize client strictly
+    # Initialize client strictly with injected env vars
     client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
     print("[CLIENT INIT SUCCESS]", flush=True)
 
