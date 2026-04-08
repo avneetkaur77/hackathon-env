@@ -4,18 +4,28 @@ from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
 
 client = None
+MODEL_NAME = None
 
+# =========================
+# INIT CLIENT (FIXED)
+# =========================
 def init_client():
-    global client
+    global client, MODEL_NAME
 
-    base_url = os.environ.get("API_BASE_URL")
-    api_key = os.environ.get("API_KEY")
+    base_url = os.getenv("API_BASE_URL")
+    api_key = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+    MODEL_NAME = os.getenv("MODEL_NAME")
 
-    # 🔥 HARD CHECK (prevents silent failure)
-    if not base_url or not api_key:
-        raise ValueError("❌ API_BASE_URL or API_KEY missing — proxy not configured")
+    # 🔥 strict checks (fail early if env broken)
+    if not base_url:
+        raise ValueError("❌ API_BASE_URL missing")
+    if not api_key:
+        raise ValueError("❌ HF_TOKEN/API_KEY missing")
+    if not MODEL_NAME:
+        raise ValueError("❌ MODEL_NAME missing")
 
-    print("[DEBUG] USING PROXY:", base_url)
+    print("[DEBUG] BASE_URL:", base_url)
+    print("[DEBUG] MODEL_NAME:", MODEL_NAME)
 
     client = OpenAI(
         base_url=base_url,
@@ -23,19 +33,23 @@ def init_client():
     )
 
 
-MAX_STEPS = 3
-
+# =========================
+# AGENT
+# =========================
 def intelligent_agent(observation):
-    global client
+    global client, MODEL_NAME
 
     ticket = observation.metadata or {}
     text = (ticket.get("text") or observation.ticket_text or "").lower()
 
-    # ✅ LLM CALL (tracked by proxy)
+    # ✅ LLM CALL (goes through proxy)
     res = client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model=MODEL_NAME,
         messages=[
-            {"role": "user", "content": f"Classify into billing, refund, or replacement: {text}"}
+            {
+                "role": "user",
+                "content": f"Classify into billing, refund, or replacement: {text}"
+            }
         ]
     )
 
@@ -50,11 +64,13 @@ def intelligent_agent(observation):
     else:
         category, action = "replacement", "process_replacement"
 
-    policy = "standard"
-    response_text = "Handled via LLM"
+    return category, action, "Handled via LLM", "standard"
 
-    return category, action, response_text, policy
 
+# =========================
+# EPISODE RUNNER
+# =========================
+MAX_STEPS = 3
 
 def run_episode(env):
     obs = env.reset()
@@ -63,11 +79,26 @@ def run_episode(env):
         category, action, response, policy = intelligent_agent(obs)
 
         if step == 1:
-            act = HackathonAction(category=category, policy=policy, type="classify", response="")
+            act = HackathonAction(
+                category=category,
+                policy=policy,
+                type="classify",
+                response=""
+            )
         elif step == 2:
-            act = HackathonAction(category=category, policy=policy, type="investigate", response="")
+            act = HackathonAction(
+                category=category,
+                policy=policy,
+                type="investigate",
+                response=""
+            )
         else:
-            act = HackathonAction(category=category, policy=policy, type=action, response=response)
+            act = HackathonAction(
+                category=category,
+                policy=policy,
+                type=action,
+                response=response
+            )
 
         obs = env.step(act)
 
@@ -77,6 +108,9 @@ def run_episode(env):
     return getattr(obs, "reward", 0)
 
 
+# =========================
+# MAIN
+# =========================
 def main():
     init_client()
 
@@ -86,7 +120,8 @@ def main():
     for _ in range(3):
         scores.append(run_episode(env))
 
-    print("AVG:", sum(scores) / len(scores))
+    avg_score = sum(scores) / len(scores)
+    print("AVG:", avg_score)
 
 
 if __name__ == "__main__":
