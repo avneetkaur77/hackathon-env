@@ -22,23 +22,18 @@ def intelligent_agent(observation):
     ticket = observation.metadata or {}
     text = (ticket.get("text") or observation.ticket_text or "").lower()
 
-    # ✅ LLM CALL INSIDE AGENT (THIS IS WHAT VALIDATOR TRACKS)
-    try:
-        res = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "user", "content": f"Classify this support ticket into billing, refund, or replacement: {text}"}
-            ]
-        )
+    # ✅ STRICT LLM CALL (NO SILENT FAIL)
+    res = client.chat.completions.create(
+        model="gpt-3.5-turbo",  # 🔥 safer for proxy mapping
+        messages=[
+            {"role": "user", "content": f"Classify into billing, refund, or replacement: {text}"}
+        ]
+    )
 
-        output = res.choices[0].message.content.lower()
-        print("[LLM OUTPUT]:", output)
+    output = res.choices[0].message.content.lower()
+    print("[LLM OUTPUT]:", output)
 
-    except Exception as e:
-        print("[ERROR]:", e)
-        output = ""
-
-    # ✅ USE LLM OUTPUT (IMPORTANT)
+    # ✅ USE OUTPUT
     if "billing" in output:
         category, action = "billing", "escalate"
     elif "refund" in output or "delay" in output:
