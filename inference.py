@@ -2,17 +2,12 @@ import os
 from openai import OpenAI
 from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
-import traceback
 
 # =========================
-# STRICT ENV VARS
+# GLOBALS
 # =========================
-API_BASE_URL = os.environ["API_BASE_URL"]  # must exist
-API_KEY = os.environ["API_KEY"]            # must exist
-MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
-
-# Initialize client strictly with injected env vars
-client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+client = None
+MODEL_NAME = None
 
 # =========================
 # INTELLIGENT AGENT
@@ -27,6 +22,7 @@ def intelligent_agent(observation):
         input=f"Classify into billing, refund, or replacement: {text}"
     )
 
+    # extract text safely
     try:
         output = res.output[0].content[0].text.lower()
     except Exception:
@@ -73,9 +69,23 @@ def run_episode(env, task_name="ticket_resolution"):
 # MAIN
 # =========================
 def main():
+    global client, MODEL_NAME
+
     print("[START] task=boot", flush=True)
+
+    # strictly use injected env vars
+    API_BASE_URL = os.environ["API_BASE_URL"]
+    API_KEY = os.environ["API_KEY"]
+    MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
+
+    # Initialize client strictly
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    print("[CLIENT INIT SUCCESS]", flush=True)
+
+    # Initialize environment
     env = HackathonEnvironment()
 
+    # Run episodes
     for _ in range(3):
         run_episode(env)
 
