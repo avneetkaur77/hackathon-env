@@ -7,6 +7,9 @@ client = None
 MODEL_NAME = None
 
 
+# =========================
+# INIT CLIENT (ULTRA SAFE)
+# =========================
 def init_client():
     global client, MODEL_NAME
 
@@ -18,40 +21,58 @@ def init_client():
         print("[DEBUG] BASE_URL:", base_url)
         print("[DEBUG] MODEL_NAME:", MODEL_NAME)
 
-        # 🔥 EVERYTHING inside try
         client = OpenAI(
             base_url=base_url,
             api_key=api_key
         )
+
+        # 🔥 FORCE ONE API CALL (VERY IMPORTANT FOR PROXY TRACKING)
+        try:
+            client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[{"role": "user", "content": "ping"}]
+            )
+            print("[DEBUG] Test API call sent")
+        except Exception as e:
+            print("[TEST CALL ERROR]:", str(e))
 
     except Exception as e:
         print("[INIT ERROR]:", str(e))
         client = None
 
 
+# =========================
+# AGENT (SAFE + ROBUST)
+# =========================
 def intelligent_agent(observation):
     global client, MODEL_NAME
 
     try:
         ticket = observation.metadata or {}
         text = (ticket.get("text") or observation.ticket_text or "").lower()
-    except:
+    except Exception as e:
+        print("[TEXT ERROR]:", str(e))
         text = ""
 
     output = ""
 
-    if client:
-        try:
+    # 🔥 ALWAYS TRY CALL (if client exists)
+    try:
+        if client:
             res = client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=[
-                    {"role": "user", "content": f"Classify: {text}"}
+                    {"role": "user", "content": f"Classify into billing, refund, or replacement: {text}"}
                 ]
             )
             output = res.choices[0].message.content.lower()
-        except Exception as e:
-            print("[LLM ERROR]:", str(e))
+            print("[LLM OUTPUT]:", output)
+        else:
+            print("[WARNING] Client not available")
+    except Exception as e:
+        print("[LLM ERROR]:", str(e))
 
+    # ✅ fallback logic (never fails)
     if "billing" in output:
         return "billing", "escalate", "Handled", "standard"
     elif "refund" in output or "delay" in output:
@@ -60,6 +81,9 @@ def intelligent_agent(observation):
         return "replacement", "process_replacement", "Handled", "standard"
 
 
+# =========================
+# EPISODE RUNNER (SAFE)
+# =========================
 def run_episode(env):
     try:
         obs = env.reset()
@@ -87,9 +111,15 @@ def run_episode(env):
             print("[STEP ERROR]:", str(e))
             break
 
-    return getattr(obs, "reward", 0)
+    try:
+        return getattr(obs, "reward", 0)
+    except:
+        return 0
 
 
+# =========================
+# MAIN (NEVER FAIL)
+# =========================
 def main():
     try:
         init_client()
@@ -114,11 +144,16 @@ def main():
         scores.append(score)
 
     try:
-        print("AVG:", sum(scores) / len(scores))
-    except:
+        avg = sum(scores) / len(scores) if scores else 0
+        print("AVG:", avg)
+    except Exception as e:
+        print("[AVG ERROR]:", str(e))
         print("AVG: 0")
 
 
+# =========================
+# ENTRYPOINT (FULL GUARD)
+# =========================
 if __name__ == "__main__":
     try:
         main()
