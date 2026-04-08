@@ -1,41 +1,20 @@
 import os
+import sys
+import traceback
 from openai import OpenAI
 from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
-import traceback
-import sys
-
-# =========================
-# STRICT ENV VARS
-# =========================
-try:
-    API_BASE_URL = os.environ["API_BASE_URL"]
-    API_KEY = os.environ["API_KEY"]
-except KeyError as ke:
-    print(f"[FATAL] Missing required environment variable: {ke}", flush=True)
-    sys.exit(1)
 
 MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
 
 # =========================
-# INITIALIZE CLIENT
-# =========================
-try:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-    print("[CLIENT INIT] Success", flush=True)
-except Exception as e:
-    print("[CLIENT INIT ERROR]:", str(e), flush=True)
-    print(traceback.format_exc(), flush=True)
-    sys.exit(1)  # ensures inference.py does not crash silently
-
-# =========================
 # INTELLIGENT AGENT
 # =========================
-def intelligent_agent(observation):
+def intelligent_agent(observation, client):
     ticket = observation.metadata or {}
     text = (ticket.get("text") or observation.ticket_text or "").strip()
 
-    # ❗ LLM call inside loop, must happen for validator
+    # ❗ LLM call inside agent loop
     try:
         res = client.responses.create(
             model=MODEL_NAME,
@@ -46,7 +25,6 @@ def intelligent_agent(observation):
     except Exception as e:
         print("[LLM CALL ERROR]:", str(e), flush=True)
         print(traceback.format_exc(), flush=True)
-        # return a default action to keep episode running
         output = ""
 
     if "billing" in output:
@@ -59,7 +37,7 @@ def intelligent_agent(observation):
 # =========================
 # RUN EPISODE
 # =========================
-def run_episode(env, task_name="ticket_resolution"):
+def run_episode(env, client, task_name="ticket_resolution"):
     print(f"[START] task={task_name}", flush=True)
     try:
         obs = env.reset()
@@ -70,7 +48,7 @@ def run_episode(env, task_name="ticket_resolution"):
 
     total_reward, steps = 0, 0
     for step in range(3):
-        category, action, response, policy = intelligent_agent(obs)
+        category, action, response, policy = intelligent_agent(obs, client)
 
         if step == 0:
             act = HackathonAction(category=category, policy=policy, type="classify", response="")
@@ -95,7 +73,24 @@ def run_episode(env, task_name="ticket_resolution"):
 # MAIN
 # =========================
 def main():
-    print("[START] task=boot", flush=True)
+    # Strict env vars
+    try:
+        API_BASE_URL = os.environ["API_BASE_URL"]
+        API_KEY = os.environ["API_KEY"]
+    except KeyError as ke:
+        print(f"[FATAL] Missing required environment variable: {ke}", flush=True)
+        sys.exit(1)
+
+    # Initialize LLM client inside main()
+    try:
+        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+        print("[CLIENT INIT] Success", flush=True)
+    except Exception as e:
+        print("[CLIENT INIT ERROR]:", str(e), flush=True)
+        print(traceback.format_exc(), flush=True)
+        sys.exit(1)
+
+    # Initialize environment
     try:
         env = HackathonEnvironment()
     except Exception as e:
@@ -103,8 +98,9 @@ def main():
         print(traceback.format_exc(), flush=True)
         sys.exit(1)
 
+    # Run episodes
     for _ in range(3):
-        run_episode(env)
+        run_episode(env, client)
 
     print("[END] task=boot score=1 steps=1", flush=True)
 
