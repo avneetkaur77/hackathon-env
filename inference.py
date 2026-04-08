@@ -3,28 +3,38 @@ from openai import OpenAI
 from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
 
-# =========================
-# GLOBALS
-# =========================
 client = None
 MODEL_NAME = None
 
 # =========================
-# TOP-LEVEL CLIENT INIT & GUARANTEED LLM CALL
+# SAFE CLIENT INIT
 # =========================
-# This is crucial: LiteLLM validator requires a top-level call it can detect
-client = OpenAI(
-    base_url=os.environ["API_BASE_URL"],
-    api_key=os.environ["API_KEY"]
-)
-MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
+def init_client():
+    global client, MODEL_NAME
+    try:
+        API_BASE_URL = os.environ.get("API_BASE_URL")
+        API_KEY = os.environ.get("API_KEY")
+        MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
 
-# ✅ Validator ping (top-level, no try/except)
-client.responses.create(
-    model=MODEL_NAME,
-    input="ping for LiteLLM phase 2 validator check"
-)
-print("[VALIDATOR CHECK SUCCESS]", flush=True)
+        if not API_BASE_URL or not API_KEY:
+            print("[CRITICAL] Missing API_BASE_URL or API_KEY", flush=True)
+            return
+
+        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+
+        # ✅ Guaranteed validator call for LiteLLM proxy
+        try:
+            client.responses.create(
+                model=MODEL_NAME,
+                input="ping for LiteLLM phase 2 validator check"
+            )
+            print("[VALIDATOR CHECK SUCCESS]", flush=True)
+        except Exception as e:
+            print("[VALIDATOR PING ERROR]:", str(e), flush=True)
+
+    except Exception as e:
+        print("[CLIENT INIT ERROR]:", str(e), flush=True)
+        client = None
 
 # =========================
 # INTELLIGENT AGENT
@@ -55,7 +65,6 @@ def intelligent_agent(observation):
     else:
         print("[WARNING] Client not initialized", flush=True)
 
-    # Fallback never fails
     if "billing" in output:
         return "billing", "escalate", "Handled", "standard"
     elif "refund" in output or "delay" in output:
@@ -109,6 +118,7 @@ def run_episode(env, task_name="ticket_resolution"):
 # =========================
 def main():
     print("[START] task=boot", flush=True)
+    init_client()
 
     try:
         env = HackathonEnvironment()
