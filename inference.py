@@ -1,91 +1,64 @@
 import os
+import textwrap
 from openai import OpenAI
 from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
 
-# =========================
-# PHASE-2 VALIDATOR SAFE CLIENT INIT
-# =========================
+# 1. STRICT ENV VARS (Requirement #2 & #3)
+# Do not use .get() with a fallback. Let it raise KeyError if missing.
 API_BASE_URL = os.environ["API_BASE_URL"]
 API_KEY = os.environ["API_KEY"]
-MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
+MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-3.5-turbo")
 
-# Initialize client strictly with injected env vars
+# Initialize Client
 client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
-# ✅ Top-level API call detected by LiteLLM validator
-client.responses.create(model=MODEL_NAME, input="phase 2 validator ping")
-print("[TOP-LEVEL VALIDATOR PING SUCCESS]", flush=True)
-
-# =========================
-# INTELLIGENT AGENT
-# =========================
-def intelligent_agent(observation):
-    ticket = observation.metadata or {}
-    text = (ticket.get("text") or observation.ticket_text or "").lower()
-    output = ""
-
-    # Always call LLM
-    res = client.responses.create(
-        model=MODEL_NAME,
-        input=f"Classify into billing, refund, or replacement: {text}"
-    )
-    try:
-        output = res.output[0].content[0].text.lower()
-    except Exception:
-        output = str(res).lower()
-    print("[LLM OUTPUT]:", output, flush=True)
-
-    # Decide action
-    if "billing" in output:
-        return "billing", "escalate", "Handled", "standard"
-    elif "refund" in output or "delay" in output:
-        return "refund", "process_refund", "Handled", "standard"
-    else:
-        return "replacement", "process_replacement", "Handled", "standard"
-
-# =========================
-# RUN EPISODE
-# =========================
-def run_episode(env, task_name="ticket_resolution"):
-    print(f"[START] task={task_name}", flush=True)
+def run_task(env, task_name):
+    print(f"[START] task={task_name} env=hackathon model={MODEL_NAME}", flush=True)
+    
     obs = env.reset()
-    total_reward, steps = 0, 0
+    rewards = []
+    
+    # 2. LLM CALL INSIDE THE EPISODE (Requirement #1)
+    # No try/except here that returns a dummy string (Requirement #4)
+    completion = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {"role": "system", "content": "Classify: billing, refund, or replacement."},
+            {"role": "user", "content": obs.ticket_text}
+        ]
+    )
+    classification = completion.choices[0].message.content.lower()
 
-    for step in range(3):
-        category, action, response, policy = intelligent_agent(obs)
-
-        if step == 0:
-            act = HackathonAction(category=category, policy=policy, type="classify", response="")
-        elif step == 1:
-            act = HackathonAction(category=category, policy=policy, type="investigate", response="")
+    for step_idx in range(1, 4):
+        # Logic to pick action based on LLM classification
+        if step_idx == 1:
+            category = "billing" if "billing" in classification else "refund"
+            act = HackathonAction(category=category, type="classify")
+        elif step_idx == 2:
+            act = HackathonAction(type="investigate")
         else:
-            act = HackathonAction(category=category, policy=policy, type=action, response=response)
+            act = HackathonAction(type="escalate", response="I understand the delay.")
 
         obs = env.step(act)
-        reward = getattr(obs, "reward", 0)
-        total_reward += reward
-        steps += 1
-        print(f"[STEP] step={steps} reward={reward}", flush=True)
+        
+        # 3. MANDATORY STDOUT LOGGING
+        reward = getattr(obs, "reward", 0.0)
+        done = getattr(obs, "done", False)
+        rewards.append(reward)
+        
+        print(f"[STEP] step={step_idx} action={act.type} reward={reward:.2f} done={str(done).lower()} error=null", flush=True)
+        if done: break
 
-        if getattr(obs, "done", False):
-            break
+    # 4. FINAL LOG
+    score = sum(rewards)
+    print(f"[END] success={str(score > 0.5).lower()} steps={step_idx} score={score:.2f} rewards={','.join(map(str, rewards))}", flush=True)
 
-    print(f"[END] task={task_name} score={total_reward} steps={steps}", flush=True)
-    return total_reward
-
-# =========================
-# MAIN
-# =========================
 def main():
-    print("[START] task=boot", flush=True)
     env = HackathonEnvironment()
-    for _ in range(3):
-        run_episode(env)
-    print("[END] task=boot score=1 steps=1", flush=True)
+    # Run the 3 tasks defined in your environment
+    for t in ["task1", "task2", "task3"]:
+        run_task(env, t)
 
-# =========================
-# ENTRYPOINT
-# =========================
 if __name__ == "__main__":
     main()
