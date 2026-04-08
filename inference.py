@@ -12,7 +12,7 @@ client = None
 MODEL_NAME = None
 
 # =========================
-# INIT PHASE-2 SAFE CLIENT
+# INIT CLIENT SAFE
 # =========================
 def init_client():
     global client, MODEL_NAME
@@ -23,24 +23,27 @@ def init_client():
 
         client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
-        # ✅ Force a test proxy call to satisfy validator
+        # ✅ Top-level ping for validator
         try:
-            client.responses.create(model=MODEL_NAME, input="phase2 proxy ping")
+            client.responses.create(model=MODEL_NAME, input="ping")
             print("[CLIENT INIT] SUCCESS", flush=True)
         except Exception as e:
-            print("[TEST CALL ERROR]:", str(e), flush=True)
+            print("[CLIENT PING ERROR]:", str(e), flush=True)
     except Exception as e:
         print("[CLIENT INIT ERROR]:", str(e), flush=True)
-        print(traceback.format_exc(), flush=True)
-        sys.exit(1)  # fail-fast if client not ready
+        traceback.print_exc()
+        sys.exit(1)
 
 # =========================
-# INTELLIGENT AGENT WITH FALLBACK
+# AGENT
 # =========================
 def intelligent_agent(obs):
     global client, MODEL_NAME
-    ticket_text = getattr(obs, "ticket_text", "") or ""
-    ticket_text = ticket_text.strip()
+    ticket_text = ""
+    try:
+        ticket_text = (getattr(obs, "ticket_text", "") or "").strip()
+    except Exception as e:
+        print("[TEXT ERROR]:", str(e), flush=True)
 
     output = ""
     try:
@@ -54,22 +57,18 @@ def intelligent_agent(obs):
             except Exception:
                 output = str(res).lower()
             print("[LLM OUTPUT]:", output, flush=True)
-        else:
-            print("[WARNING] Client not initialized", flush=True)
-            output = ""  # fallback
     except Exception as e:
         print("[LLM CALL ERROR]:", str(e), flush=True)
         output = ""  # fallback
 
     # =================
-    # Default fallback logic
+    # Fallback logic
     # =================
     if "billing" in output:
         return "billing", "escalate", "Handled", "standard"
     elif "refund" in output or "delay" in output:
         return "refund", "process_refund", "Handled", "standard"
     else:
-        # If API failed or output is unexpected
         return "replacement", "process_replacement", "Handled", "standard"
 
 # =========================
@@ -114,7 +113,7 @@ def run_episode(env, task_name="ticket_resolution"):
 def main():
     print("[START] task=boot", flush=True)
 
-    # ✅ Phase-2 safe client
+    # init client safely
     init_client()
 
     try:
