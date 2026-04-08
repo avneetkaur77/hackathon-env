@@ -1,15 +1,24 @@
 from uuid import uuid4
 from dataclasses import dataclass
-
 from server.models import HackathonAction, HackathonObservation
 
+# =========================
+# UTILS
+# =========================
+def clamp_reward(value: float) -> float:
+    return max(0.0, min(1.0, value))
 
+# =========================
+# STATE
+# =========================
 @dataclass
 class State:
     episode_id: str
     step_count: int
 
-
+# =========================
+# ENVIRONMENT
+# =========================
 class HackathonEnvironment:
 
     SUPPORTS_CONCURRENT_SESSIONS = False
@@ -47,7 +56,6 @@ class HackathonEnvironment:
 
     def reset(self):
         self._state = State(episode_id=str(uuid4()), step_count=0)
-
         self.current_ticket = self.tasks[self.task_index]
         self.task_index = (self.task_index + 1) % len(self.tasks)
 
@@ -59,7 +67,6 @@ class HackathonEnvironment:
         )
 
     def step(self, action: HackathonAction):
-        # ✅ FIX: ensure reset if step called first
         if self.current_ticket is None:
             self.reset()
 
@@ -80,9 +87,9 @@ class HackathonEnvironment:
 
         # STEP 3: FINAL RESPONSE
         elif step == 3:
-
             score = 0.0
 
+            # category/action type matching
             if gt["category"] == "refund" and action.type == "process_refund":
                 score += 0.3
             elif gt["category"] == "replacement" and action.type == "process_replacement":
@@ -90,19 +97,17 @@ class HackathonEnvironment:
             elif gt["category"] == "billing" and action.type == "escalate":
                 score += 0.3
 
+            # text-based bonus signals
             if "sorry" in response:
                 score += 0.2
-
             if "understand" in response:
                 score += 0.2
-
             if str(gt["days"]) in response:
                 score += 0.15
-
             if gt["is_urgent"] and "priority" in response:
                 score += 0.15
 
-            reward = min(1.0, score)
+            reward = clamp_reward(min(1.0, score))
 
         done = step >= self.max_steps
 
