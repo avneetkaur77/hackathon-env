@@ -36,29 +36,22 @@ def safe_parse_llm_output(output_text: str) -> dict:
         }
 
 # =========================
-# INIT CLIENT (FIXED)
+# INIT CLIENT
 # =========================
 def init_client():
     global client, MODEL_NAME
     try:
-        # ✅ MUST use injected env vars (NO fallback)
         API_BASE_URL = os.environ["API_BASE_URL"]
         API_KEY = os.environ["API_KEY"]
 
-        # ✅ safer default model
         MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-4o-mini"
 
-        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+        print("USING BASE URL:", API_BASE_URL, flush=True)
 
-        # ✅ Try ping BUT DO NOT kill client if it fails
-        try:
-            client.responses.create(
-                model=MODEL_NAME,
-                input="ping"
-            )
-            print("[PING SUCCESS]", flush=True)
-        except Exception as e:
-            print("[PING FAILED BUT CONTINUING]:", str(e), flush=True)
+        client = OpenAI(
+            base_url=API_BASE_URL,
+            api_key=API_KEY
+        )
 
     except Exception as e:
         print("[CLIENT INIT ERROR]:", str(e), flush=True)
@@ -74,26 +67,28 @@ def intelligent_agent(obs: HackathonObservation) -> dict:
     ticket_text = getattr(obs, "ticket_text", "") or ""
 
     try:
-        # ✅ ALWAYS attempt LLM call (NO skipping)
-        res = client.responses.create(
+        # ✅ IMPORTANT: use chat.completions (proxy tracks this)
+        res = client.chat.completions.create(
             model=MODEL_NAME,
-            input=f"Return JSON with keys category, action_type, response, policy for ticket: {ticket_text}"
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Return JSON with keys category, action_type, response, policy for ticket: {ticket_text}"
+                }
+            ]
         )
 
-        raw_text = ""
-        try:
-            raw_text = res.output[0].content[0].text
-        except Exception:
-            raw_text = str(res)
+        # ✅ correct parsing
+        raw_text = res.choices[0].message.content
 
         parsed = safe_parse_llm_output(raw_text)
         print("[LLM OUTPUT]:", parsed, flush=True)
+
         return parsed
 
     except Exception as e:
         print("[LLM ERROR]:", str(e), flush=True)
 
-        # ✅ fallback AFTER attempt
         return {
             "category": "replacement",
             "type": "process_replacement",
