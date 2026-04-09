@@ -42,7 +42,7 @@ def init_client():
     global client, MODEL_NAME
     try:
         API_BASE_URL = os.environ["API_BASE_URL"]
-        API_KEY = os.environ["API_KEY"]   # ✅ ONLY THIS
+        API_KEY = os.environ["API_KEY"]
 
         MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-4o-mini"
 
@@ -71,12 +71,7 @@ def intelligent_agent(obs: HackathonObservation) -> dict:
 
     if client is None:
         print("[FATAL] CLIENT NONE", flush=True)
-        return {
-            "category": "replacement",
-            "type": "process_replacement",
-            "response": "Handled",
-            "policy": "standard"
-        }
+        sys.exit(1)
 
     try:
         res = client.chat.completions.create(
@@ -98,13 +93,7 @@ def intelligent_agent(obs: HackathonObservation) -> dict:
 
     except Exception as e:
         print("[LLM ERROR]:", str(e), flush=True)
-
-        return {
-            "category": "replacement",
-            "type": "process_replacement",
-            "response": "Handled",
-            "policy": "standard"
-        }
+        raise e   # ❗ DO NOT SWALLOW
 
 # =========================
 # RUN EPISODE
@@ -112,42 +101,32 @@ def intelligent_agent(obs: HackathonObservation) -> dict:
 def run_episode(env: HackathonEnvironment, task_name="ticket_resolution") -> float:
     print(f"[START] task={task_name}", flush=True)
 
-    try:
-        obs = env.reset()
-    except Exception as e:
-        print("[RESET ERROR]:", str(e), flush=True)
-        print(f"[END] task={task_name} score=0 steps=0", flush=True)
-        return 0.0
+    obs = env.reset()
 
     total_reward = 0.0
     steps = 0
 
     for step in range(1, 4):
-        try:
-            action_dict = intelligent_agent(obs)
+        action_dict = intelligent_agent(obs)
 
-            act_type = ["classify", "investigate", action_dict["type"]][min(step-1, 2)]
+        act_type = ["classify", "investigate", action_dict["type"]][min(step-1, 2)]
 
-            act = HackathonAction(
-                category=action_dict["category"],
-                type=act_type,
-                response=action_dict["response"],
-                policy=action_dict["policy"]
-            )
+        act = HackathonAction(
+            category=action_dict["category"],
+            type=act_type,
+            response=action_dict["response"],
+            policy=action_dict["policy"]
+        )
 
-            obs = env.step(act)
+        obs = env.step(act)
 
-            reward = clamp_reward(getattr(obs, "reward", 0))
-            total_reward += reward
-            steps += 1
+        reward = clamp_reward(getattr(obs, "reward", 0))
+        total_reward += reward
+        steps += 1
 
-            print(f"[STEP] step={steps} reward={reward}", flush=True)
+        print(f"[STEP] step={steps} reward={reward}", flush=True)
 
-            if getattr(obs, "done", False):
-                break
-
-        except Exception as e:
-            print("[STEP ERROR]:", str(e), flush=True)
+        if getattr(obs, "done", False):
             break
 
     print(f"[END] task={task_name} score={round(total_reward,2)} steps={steps}", flush=True)
@@ -161,26 +140,22 @@ def main():
 
     init_client()
 
-    # 🔥 FORCE API CALL (CRITICAL)
-    try:
-        if client:
-            print("[FORCING TEST API CALL]", flush=True)
-
-            test = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[{"role": "user", "content": "hello"}]
-            )
-
-            print("[TEST CALL SUCCESS]", flush=True)
-
-    except Exception as e:
-        print("[TEST CALL FAILED]:", str(e), flush=True)
-
-    try:
-        env = HackathonEnvironment()
-    except Exception as e:
-        print("[ENV INIT ERROR]:", str(e), flush=True)
+    # 🔥 GUARANTEED API CALL (NO TRY/EXCEPT)
+    if client is None:
+        print("[FATAL] CLIENT NOT INITIALIZED", flush=True)
         sys.exit(1)
+
+    print("[FORCING API CALL]", flush=True)
+
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[{"role": "user", "content": "Say OK"}]
+    )
+
+    print("[API CALL SUCCESS]", flush=True)
+
+    # ✅ continue normal flow
+    env = HackathonEnvironment()
 
     for _ in range(3):
         run_episode(env)
@@ -191,8 +166,4 @@ def main():
 # ENTRYPOINT
 # =========================
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print("[FATAL ERROR]:", str(e), flush=True)
-        print("[END] task=boot score=0 steps=1", flush=True)
+    main()
