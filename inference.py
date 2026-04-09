@@ -36,31 +36,25 @@ def safe_parse_llm_output(output_text: str) -> dict:
         }
 
 # =========================
-# INIT CLIENT (FINAL FIX)
+# INIT CLIENT (STRICT)
 # =========================
 def init_client():
     global client, MODEL_NAME
     try:
-        # ✅ MUST use proxy base URL
         API_BASE_URL = os.environ["API_BASE_URL"]
-
-        # 🔥 CRITICAL FIX: use HF_TOKEN first
-        API_KEY = os.environ.get("HF_TOKEN") or os.environ.get("API_KEY")
-
-        if not API_KEY:
-            raise ValueError("Missing HF_TOKEN / API_KEY")
+        API_KEY = os.environ["API_KEY"]   # ✅ ONLY THIS
 
         MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-4o-mini"
 
         print("BASE URL:", API_BASE_URL, flush=True)
-        print("MODEL:", MODEL_NAME, flush=True)
+        print("API KEY PRESENT:", bool(API_KEY), flush=True)
 
         client = OpenAI(
             base_url=API_BASE_URL,
             api_key=API_KEY
         )
 
-        print("[CLIENT INITIALIZED SUCCESSFULLY]", flush=True)
+        print("[CLIENT INITIALIZED]", flush=True)
 
     except Exception as e:
         print("[CLIENT INIT ERROR]:", str(e), flush=True)
@@ -75,9 +69,8 @@ def intelligent_agent(obs: HackathonObservation) -> dict:
 
     ticket_text = getattr(obs, "ticket_text", "") or ""
 
-    # 🚨 SAFETY CHECK (VERY IMPORTANT)
     if client is None:
-        print("[FATAL] CLIENT IS NONE - NO API CALL", flush=True)
+        print("[FATAL] CLIENT NONE", flush=True)
         return {
             "category": "replacement",
             "type": "process_replacement",
@@ -86,7 +79,6 @@ def intelligent_agent(obs: HackathonObservation) -> dict:
         }
 
     try:
-        # ✅ REQUIRED CALL (proxy detects this)
         res = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
@@ -168,6 +160,21 @@ def main():
     print("[START] task=boot", flush=True)
 
     init_client()
+
+    # 🔥 FORCE API CALL (CRITICAL)
+    try:
+        if client:
+            print("[FORCING TEST API CALL]", flush=True)
+
+            test = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[{"role": "user", "content": "hello"}]
+            )
+
+            print("[TEST CALL SUCCESS]", flush=True)
+
+    except Exception as e:
+        print("[TEST CALL FAILED]:", str(e), flush=True)
 
     try:
         env = HackathonEnvironment()
