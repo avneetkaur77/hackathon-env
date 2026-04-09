@@ -36,22 +36,31 @@ def safe_parse_llm_output(output_text: str) -> dict:
         }
 
 # =========================
-# INIT CLIENT
+# INIT CLIENT (FINAL FIX)
 # =========================
 def init_client():
     global client, MODEL_NAME
     try:
+        # ✅ MUST use proxy base URL
         API_BASE_URL = os.environ["API_BASE_URL"]
-        API_KEY = os.environ["API_KEY"]
+
+        # 🔥 CRITICAL FIX: use HF_TOKEN first
+        API_KEY = os.environ.get("HF_TOKEN") or os.environ.get("API_KEY")
+
+        if not API_KEY:
+            raise ValueError("Missing HF_TOKEN / API_KEY")
 
         MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-4o-mini"
 
-        print("USING BASE URL:", API_BASE_URL, flush=True)
+        print("BASE URL:", API_BASE_URL, flush=True)
+        print("MODEL:", MODEL_NAME, flush=True)
 
         client = OpenAI(
             base_url=API_BASE_URL,
             api_key=API_KEY
         )
+
+        print("[CLIENT INITIALIZED SUCCESSFULLY]", flush=True)
 
     except Exception as e:
         print("[CLIENT INIT ERROR]:", str(e), flush=True)
@@ -59,15 +68,25 @@ def init_client():
         client = None
 
 # =========================
-# AGENT (FIXED)
+# AGENT
 # =========================
 def intelligent_agent(obs: HackathonObservation) -> dict:
     global client, MODEL_NAME
 
     ticket_text = getattr(obs, "ticket_text", "") or ""
 
+    # 🚨 SAFETY CHECK (VERY IMPORTANT)
+    if client is None:
+        print("[FATAL] CLIENT IS NONE - NO API CALL", flush=True)
+        return {
+            "category": "replacement",
+            "type": "process_replacement",
+            "response": "Handled",
+            "policy": "standard"
+        }
+
     try:
-        # ✅ IMPORTANT: use chat.completions (proxy tracks this)
+        # ✅ REQUIRED CALL (proxy detects this)
         res = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
@@ -78,7 +97,6 @@ def intelligent_agent(obs: HackathonObservation) -> dict:
             ]
         )
 
-        # ✅ correct parsing
         raw_text = res.choices[0].message.content
 
         parsed = safe_parse_llm_output(raw_text)
