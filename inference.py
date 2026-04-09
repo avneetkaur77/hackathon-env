@@ -36,30 +36,41 @@ def safe_parse_llm_output(output_text: str) -> dict:
         }
 
 # =========================
-# INIT CLIENT (STRICT)
+# INIT CLIENT (FINAL FIX)
 # =========================
 def init_client():
     global client, MODEL_NAME
+
+    API_BASE_URL = os.environ.get("API_BASE_URL")
+    API_KEY = os.environ.get("API_KEY")
+
+    if not API_BASE_URL:
+        print("[FATAL] API_BASE_URL missing", flush=True)
+        sys.exit(1)
+
+    if not API_KEY:
+        print("[FATAL] API_KEY missing", flush=True)
+        sys.exit(1)
+
+    MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-4o-mini"
+
+    print("BASE URL:", API_BASE_URL, flush=True)
+
     try:
-        API_BASE_URL = os.environ["API_BASE_URL"]
-        API_KEY = os.environ["API_KEY"]
-
-        MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-4o-mini"
-
-        print("BASE URL:", API_BASE_URL, flush=True)
-        print("API KEY PRESENT:", bool(API_KEY), flush=True)
-
         client = OpenAI(
+            api_key=API_KEY,
             base_url=API_BASE_URL,
-            api_key=API_KEY
+            default_headers={
+                "Authorization": f"Bearer {API_KEY}"
+            }
         )
 
-        print("[CLIENT INITIALIZED]", flush=True)
+        print("[CLIENT INITIALIZED SUCCESSFULLY]", flush=True)
 
     except Exception as e:
-        print("[CLIENT INIT ERROR]:", str(e), flush=True)
+        print("[CLIENT INIT FAILED]:", str(e), flush=True)
         traceback.print_exc()
-        client = None
+        sys.exit(1)
 
 # =========================
 # AGENT
@@ -73,27 +84,22 @@ def intelligent_agent(obs: HackathonObservation) -> dict:
         print("[FATAL] CLIENT NONE", flush=True)
         sys.exit(1)
 
-    try:
-        res = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Return JSON with keys category, action_type, response, policy for ticket: {ticket_text}"
-                }
-            ]
-        )
+    res = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {
+                "role": "user",
+                "content": f"Return JSON with keys category, action_type, response, policy for ticket: {ticket_text}"
+            }
+        ]
+    )
 
-        raw_text = res.choices[0].message.content
+    raw_text = res.choices[0].message.content
+    parsed = safe_parse_llm_output(raw_text)
 
-        parsed = safe_parse_llm_output(raw_text)
-        print("[LLM OUTPUT]:", parsed, flush=True)
+    print("[LLM OUTPUT]:", parsed, flush=True)
 
-        return parsed
-
-    except Exception as e:
-        print("[LLM ERROR]:", str(e), flush=True)
-        raise e   # ❗ DO NOT SWALLOW
+    return parsed
 
 # =========================
 # RUN EPISODE
@@ -140,11 +146,11 @@ def main():
 
     init_client()
 
-    # 🔥 GUARANTEED API CALL (NO TRY/EXCEPT)
     if client is None:
         print("[FATAL] CLIENT NOT INITIALIZED", flush=True)
         sys.exit(1)
 
+    # 🔥 FORCE API CALL (REQUIRED FOR VALIDATION)
     print("[FORCING API CALL]", flush=True)
 
     response = client.chat.completions.create(
