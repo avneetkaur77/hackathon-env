@@ -36,64 +36,77 @@ def safe_parse_llm_output(output_text: str) -> dict:
         }
 
 # =========================
-# INIT CLIENT SAFE
+# INIT CLIENT (FIXED)
 # =========================
 def init_client():
     global client, MODEL_NAME
     try:
+        # ✅ MUST use injected env vars (NO fallback)
         API_BASE_URL = os.environ["API_BASE_URL"]
         API_KEY = os.environ["API_KEY"]
-        MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-3.5-turbo"
 
+        # ✅ safer default model
+        MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-4o-mini"
+
+        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+
+        # ✅ Try ping BUT DO NOT kill client if it fails
         try:
-            client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-            # ✅ Validator ping
-            client.responses.create(model=MODEL_NAME, input="ping from top-level")
-            print("[CLIENT INIT + VALIDATOR PING SUCCESS]", flush=True)
+            client.responses.create(
+                model=MODEL_NAME,
+                input="ping"
+            )
+            print("[PING SUCCESS]", flush=True)
         except Exception as e:
-            print("[CLIENT PING ERROR]:", str(e), flush=True)
-            client = None
+            print("[PING FAILED BUT CONTINUING]:", str(e), flush=True)
+
     except Exception as e:
         print("[CLIENT INIT ERROR]:", str(e), flush=True)
         traceback.print_exc()
         client = None
 
 # =========================
-# INTELLIGENT AGENT
+# AGENT (FIXED)
 # =========================
 def intelligent_agent(obs: HackathonObservation) -> dict:
+    global client, MODEL_NAME
+
     ticket_text = getattr(obs, "ticket_text", "") or ""
-    output_dict = {
-        "category": "replacement",
-        "type": "process_replacement",
-        "response": "Handled",
-        "policy": "standard"
-    }
 
-    if client:
+    try:
+        # ✅ ALWAYS attempt LLM call (NO skipping)
+        res = client.responses.create(
+            model=MODEL_NAME,
+            input=f"Return JSON with keys category, action_type, response, policy for ticket: {ticket_text}"
+        )
+
+        raw_text = ""
         try:
-            res = client.responses.create(
-                model=MODEL_NAME,
-                input=f"Return JSON with keys category, action_type, response, policy for ticket: {ticket_text}"
-            )
-            raw_text = ""
-            try:
-                raw_text = res.output[0].content[0].text
-            except Exception:
-                raw_text = str(res)
-            
-            output_dict = safe_parse_llm_output(raw_text)
-            print("[LLM OUTPUT]:", output_dict, flush=True)
-        except Exception as e:
-            print("[LLM CALL ERROR]:", str(e), flush=True)
+            raw_text = res.output[0].content[0].text
+        except Exception:
+            raw_text = str(res)
 
-    return output_dict
+        parsed = safe_parse_llm_output(raw_text)
+        print("[LLM OUTPUT]:", parsed, flush=True)
+        return parsed
+
+    except Exception as e:
+        print("[LLM ERROR]:", str(e), flush=True)
+
+        # ✅ fallback AFTER attempt
+        return {
+            "category": "replacement",
+            "type": "process_replacement",
+            "response": "Handled",
+            "policy": "standard"
+        }
 
 # =========================
 # RUN EPISODE
 # =========================
 def run_episode(env: HackathonEnvironment, task_name="ticket_resolution") -> float:
     print(f"[START] task={task_name}", flush=True)
+
     try:
         obs = env.reset()
     except Exception as e:
@@ -107,20 +120,27 @@ def run_episode(env: HackathonEnvironment, task_name="ticket_resolution") -> flo
     for step in range(1, 4):
         try:
             action_dict = intelligent_agent(obs)
+
             act_type = ["classify", "investigate", action_dict["type"]][min(step-1, 2)]
+
             act = HackathonAction(
                 category=action_dict["category"],
                 type=act_type,
                 response=action_dict["response"],
                 policy=action_dict["policy"]
             )
+
             obs = env.step(act)
+
             reward = clamp_reward(getattr(obs, "reward", 0))
             total_reward += reward
             steps += 1
+
             print(f"[STEP] step={steps} reward={reward}", flush=True)
+
             if getattr(obs, "done", False):
                 break
+
         except Exception as e:
             print("[STEP ERROR]:", str(e), flush=True)
             break
@@ -133,6 +153,7 @@ def run_episode(env: HackathonEnvironment, task_name="ticket_resolution") -> flo
 # =========================
 def main():
     print("[START] task=boot", flush=True)
+
     init_client()
 
     try:
