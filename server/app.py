@@ -1,13 +1,28 @@
-
 from fastapi import FastAPI, HTTPException
 from server.models import HackathonAction
 from server.hackathon_env_environment import HackathonEnvironment
 import uvicorn
 
+# ✅ ADD THESE IMPORTS
+import threading
+import subprocess
+
 app = FastAPI()
 
-# ✅ GLOBAL ENV (IMPORTANT FIX)
-env = HackathonEnvironment()
+# 🔥 RUN inference.py in background (VERY IMPORTANT)
+def run_inference():
+    try:
+        subprocess.run(["python", "inference.py"], check=True)
+    except Exception as e:
+        print("[INFERENCE ERROR]:", str(e), flush=True)
+
+# ✅ start background thread
+threading.Thread(target=run_inference, daemon=True).start()
+
+
+# ✅ create fresh env per request (IMPORTANT)
+def get_env():
+    return HackathonEnvironment()
 
 
 @app.get("/")
@@ -20,13 +35,12 @@ def health():
     return {"status": "ok"}
 
 
-# ✅ RESET
+# ✅ RESET (GET + POST)
 @app.get("/reset")
 @app.post("/reset")
 def reset():
-    global env
     try:
-        env = HackathonEnvironment()  # fresh episode
+        env = get_env()
         obs = env.reset()
 
         return {
@@ -43,12 +57,14 @@ def reset():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ✅ STEP (FIXED)
+# ✅ STEP
 @app.post("/step")
 def step(action: HackathonAction):
-    global env
     try:
-        obs = env.step(action)   # ❌ NO reset here
+        env = get_env()
+        env.reset()
+
+        obs = env.step(action)
 
         return {
             "observation": {
@@ -67,8 +83,8 @@ def step(action: HackathonAction):
 # ✅ STATE
 @app.get("/state")
 def state():
-    global env
     try:
+        env = get_env()
         return {
             "episode_id": env.state.episode_id,
             "step_count": env.state.step_count
@@ -77,10 +93,10 @@ def state():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ✅ REQUIRED for HF
 def main():
     uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
 
 
 if __name__ == "__main__":
     main()
-
