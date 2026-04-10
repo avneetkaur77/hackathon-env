@@ -1,24 +1,40 @@
 from fastapi import FastAPI, HTTPException
-from server.models import HackathonAction
-from server.hackathon_env_environment import HackathonEnvironment
+from contextlib import asynccontextmanager
+import subprocess
 import uvicorn
 
-import threading
-import subprocess
+from server.models import HackathonAction
+from server.hackathon_env_environment import HackathonEnvironment
 
-app = FastAPI()
 
-# ✅ GLOBAL ENV
-env = HackathonEnvironment()
-
-# 🔥 RUN inference.py in background
-def run_inference():
+# =========================
+# 🔥 STARTUP FIX (CRITICAL)
+# =========================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Run inference BEFORE server starts accepting requests
     try:
+        print("[STARTING INFERENCE]", flush=True)
         subprocess.run(["python", "inference.py"], check=True)
+        print("[INFERENCE COMPLETED]", flush=True)
     except Exception as e:
         print("[INFERENCE ERROR]:", str(e), flush=True)
 
+    yield
 
+
+app = FastAPI(lifespan=lifespan)
+
+
+# =========================
+# ✅ GLOBAL ENV (IMPORTANT)
+# =========================
+env = HackathonEnvironment()
+
+
+# =========================
+# ROUTES
+# =========================
 @app.get("/")
 def root():
     return {"message": "Hackathon Env Running"}
@@ -29,11 +45,13 @@ def health():
     return {"status": "ok"}
 
 
+# ✅ RESET
 @app.get("/reset")
 @app.post("/reset")
 def reset():
     try:
         obs = env.reset()
+
         return {
             "observation": {
                 "ticket_text": obs.ticket_text,
@@ -43,14 +61,17 @@ def reset():
             "done": bool(obs.done),
             "info": {}
         }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ✅ STEP
 @app.post("/step")
 def step(action: HackathonAction):
     try:
-        obs = env.step(action)   # ✅ NO reset here
+        obs = env.step(action)
+
         return {
             "observation": {
                 "ticket_text": obs.ticket_text,
@@ -60,19 +81,26 @@ def step(action: HackathonAction):
             "done": bool(obs.done),
             "info": {}
         }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ✅ STATE
 @app.get("/state")
 def state():
-    return {
-        "episode_id": env.state.episode_id,
-        "step_count": env.state.step_count
-    }
+    try:
+        return {
+            "episode_id": env.state.episode_id,
+            "step_count": env.state.step_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# ✅ IMPORTANT: KEEP THIS FOR MODULE RUN
+# =========================
+# ENTRYPOINT
+# =========================
 def main():
     uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
 
