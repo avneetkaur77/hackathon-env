@@ -1,4 +1,4 @@
-```python
+
 import os
 from openai import OpenAI
 from server.hackathon_env_environment import HackathonEnvironment
@@ -58,4 +58,4 @@ def run():
 
 
 run()
-```
+
