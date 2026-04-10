@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, HTTPException
 from server.models import HackathonAction
 from server.hackathon_env_environment import HackathonEnvironment
@@ -5,9 +6,8 @@ import uvicorn
 
 app = FastAPI()
 
-# ✅ create fresh env per request (IMPORTANT)
-def get_env():
-    return HackathonEnvironment()
+# ✅ GLOBAL ENV (IMPORTANT FIX)
+env = HackathonEnvironment()
 
 
 @app.get("/")
@@ -20,12 +20,13 @@ def health():
     return {"status": "ok"}
 
 
-# ✅ RESET (GET + POST)
+# ✅ RESET
 @app.get("/reset")
 @app.post("/reset")
 def reset():
+    global env
     try:
-        env = get_env()
+        env = HackathonEnvironment()  # fresh episode
         obs = env.reset()
 
         return {
@@ -42,14 +43,12 @@ def reset():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ✅ STEP
+# ✅ STEP (FIXED)
 @app.post("/step")
 def step(action: HackathonAction):
+    global env
     try:
-        env = get_env()  # stateless (validator-friendly)
-        env.reset()      # ensure valid state
-
-        obs = env.step(action)
+        obs = env.step(action)   # ❌ NO reset here
 
         return {
             "observation": {
@@ -68,8 +67,8 @@ def step(action: HackathonAction):
 # ✅ STATE
 @app.get("/state")
 def state():
+    global env
     try:
-        env = get_env()
         return {
             "episode_id": env.state.episode_id,
             "step_count": env.state.step_count
@@ -78,10 +77,10 @@ def state():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ✅ REQUIRED for HF
 def main():
     uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
 
 
 if __name__ == "__main__":
     main()
+
