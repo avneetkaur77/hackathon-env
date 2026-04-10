@@ -1,87 +1,60 @@
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from server.models import HackathonAction
 from server.hackathon_env_environment import HackathonEnvironment
-import uvicorn
 
-app = FastAPI()
+app = FastAPI(title="Adaptive Customer Support Engine")
 
-# ✅ create fresh env per request (IMPORTANT)
-def get_env():
-    return HackathonEnvironment()
-
+# This dictionary stores the state so Step 1, 2, and 3 stay linked
+sessions = {}
 
 @app.get("/")
 def root():
-    return {"message": "Hackathon Env Running"}
-
+    return {"message": "Customer Support Environment is Live"}
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-
-# ✅ RESET (GET + POST)
-@app.get("/reset")
+# ✅ FIXED: Added Reset endpoint (Validator hits this first)
 @app.post("/reset")
-def reset():
+def reset(task_id: str = "easy", session_id: str = "default"):
     try:
-        env = get_env()
-        obs = env.reset()
-
+        env = HackathonEnvironment()
+        # Start the specific task requested (easy, medium, or hard)
+        obs = env.reset_to_task(task_id)
+        sessions[session_id] = env 
+        
         return {
             "observation": {
                 "ticket_text": obs.ticket_text,
                 "metadata": obs.metadata
             },
-            "reward": float(obs.reward),
-            "done": bool(obs.done),
-            "info": {}
+            "reward": 0.0,
+            "done": False
         }
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# ✅ STEP
+# ✅ FIXED: Step no longer calls reset() internally
 @app.post("/step")
-def step(action: HackathonAction):
-    try:
-        env = get_env()  # stateless (validator-friendly)
-        env.reset()      # ensure valid state
+def step(action: HackathonAction, session_id: str = "default"):
+    if session_id not in sessions:
+        # If agent forgets to reset, we do it once for them
+        sessions[session_id] = HackathonEnvironment()
+        sessions[session_id].reset()
+    
+    env = sessions[session_id]
+    obs = env.step(action)
 
-        obs = env.step(action)
-
-        return {
-            "observation": {
-                "ticket_text": obs.ticket_text,
-                "metadata": obs.metadata
-            },
-            "reward": float(obs.reward),
-            "done": bool(obs.done),
-            "info": {}
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ✅ STATE
-@app.get("/state")
-def state():
-    try:
-        env = get_env()
-        return {
-            "episode_id": env.state.episode_id,
-            "step_count": env.state.step_count
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ✅ REQUIRED for HF
-def main():
-    uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
-
+    return {
+        "observation": {
+            "ticket_text": obs.ticket_text,
+            "metadata": obs.metadata
+        },
+        "reward": float(obs.reward),
+        "done": bool(obs.done)
+    }
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run(app, host="0.0.0.0", port=7860)
