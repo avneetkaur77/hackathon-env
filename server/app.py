@@ -3,7 +3,6 @@ from server.models import HackathonAction
 from server.hackathon_env_environment import HackathonEnvironment
 import uvicorn
 
-# ✅ ADD THESE IMPORTS
 import threading
 import subprocess
 
@@ -93,9 +92,9 @@ def state():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ✅ REQUIRED for HF
+# ✅ REQUIRED for HF (FIXED)
 def main():
-    uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
+    uvicorn.run(app, host="0.0.0.0", port=7860)
 
 
 if __name__ == "__main__":
