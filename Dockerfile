@@ -11,4 +11,4 @@ RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r server/requirements.txt
 
 EXPOSE 7860
-CMD ["python", "inference.py"]
+CMD ["python", "-m", "server.app"]
