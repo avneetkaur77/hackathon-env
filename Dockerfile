@@ -13,4 +13,4 @@ RUN pip install --no-cache-dir -r server/requirements.txt
 EXPOSE 7860
 
 # ✅ FIX: run as module (IMPORTANT)
-CMD ["python", "-m", "server.app"]
+CMD ["sh", "-c", "python inference.py && python -m server.app"]

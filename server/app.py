@@ -18,8 +18,6 @@ def run_inference():
     except Exception as e:
         print("[INFERENCE ERROR]:", str(e), flush=True)
 
-threading.Thread(target=run_inference, daemon=True).start()
-
 
 @app.get("/")
 def root():
