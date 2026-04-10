@@ -8,7 +8,7 @@ import subprocess
 
 app = FastAPI()
 
-# ✅ GLOBAL ENV (FIX)
+# ✅ GLOBAL ENV
 env = HackathonEnvironment()
 
 # 🔥 RUN inference.py in background
@@ -31,13 +31,11 @@ def health():
     return {"status": "ok"}
 
 
-# ✅ RESET
 @app.get("/reset")
 @app.post("/reset")
 def reset():
     try:
         obs = env.reset()
-
         return {
             "observation": {
                 "ticket_text": obs.ticket_text,
@@ -47,17 +45,14 @@ def reset():
             "done": bool(obs.done),
             "info": {}
         }
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ✅ STEP (NO NEW ENV!)
 @app.post("/step")
 def step(action: HackathonAction):
     try:
-        obs = env.step(action)
-
+        obs = env.step(action)   # ✅ NO reset here
         return {
             "observation": {
                 "ticket_text": obs.ticket_text,
@@ -67,26 +62,21 @@ def step(action: HackathonAction):
             "done": bool(obs.done),
             "info": {}
         }
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ✅ STATE
 @app.get("/state")
 def state():
-    try:
-        return {
-            "episode_id": env.state.episode_id,
-            "step_count": env.state.step_count
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "episode_id": env.state.episode_id,
+        "step_count": env.state.step_count
+    }
 
 
-# ✅ RUN SERVER
+# ✅ IMPORTANT: KEEP THIS FOR MODULE RUN
 def main():
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+    uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
 
 
 if __name__ == "__main__":

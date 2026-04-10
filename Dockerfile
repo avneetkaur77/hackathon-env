@@ -12,5 +12,5 @@ RUN pip install --no-cache-dir -r server/requirements.txt
 
 EXPOSE 7860
 
-# ✅ RUN APP DIRECTLY (more reliable than -m)
-CMD ["python", "server/app.py"]
+# ✅ FIX: run as module (IMPORTANT)
+CMD ["python", "-m", "server.app"]
