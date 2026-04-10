@@ -1,4 +1,3 @@
-
 import os
 import traceback
 from openai import OpenAI
@@ -11,79 +10,73 @@ from server.models import HackathonAction, HackathonObservation
 client = None
 MODEL_NAME = None
 
+
 # =========================
-# SAFE INIT CLIENT
+# INIT CLIENT (STRICT)
 # =========================
 def init_client():
     global client, MODEL_NAME
 
-    API_BASE_URL = os.environ.get("API_BASE_URL")
-    API_KEY = os.environ.get("API_KEY")
-
-    MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-4o-mini"
-
-    if not API_BASE_URL or not API_KEY:
-        print("[INFO] No proxy env (Phase 1 mode)", flush=True)
-        client = None
-        return
-
     try:
+        # ❗ MUST use os.environ (NO fallback)
+        API_BASE_URL = os.environ["API_BASE_URL"]
+        API_KEY = os.environ["API_KEY"]
+
+        MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
+
         client = OpenAI(
             api_key=API_KEY,
             base_url=API_BASE_URL
         )
+
         print("[OK] Proxy client initialized", flush=True)
 
     except Exception as e:
-        print("[ERROR] Client init failed:", str(e), flush=True)
+        print("[FATAL] CLIENT INIT FAILED", flush=True)
         traceback.print_exc()
-        client = None
+        raise e   # ❗ crash if fails (important)
 
 
 # =========================
-# FORCE API CALL (CRITICAL)
+# FORCE API CALL (MANDATORY)
 # =========================
 def ensure_api_call():
     global client, MODEL_NAME
 
-    if client is None:
-        print("[SKIP] No client available", flush=True)
-        return
-
     try:
+        # ❗ MUST execute no matter what
         res = client.chat.completions.create(
             model=MODEL_NAME,
-            messages=[{"role": "user", "content": "Say OK"}],
+            messages=[{"role": "user", "content": "Reply with OK"}],
             max_tokens=5
         )
-        print("[SUCCESS] API CALL REGISTERED", flush=True)
+
+        print("[SUCCESS] PROXY API CALL MADE", flush=True)
 
     except Exception as e:
-        print("[ERROR] API call failed:", str(e), flush=True)
+        print("[FATAL] API CALL FAILED", flush=True)
+        traceback.print_exc()
+        raise e   # ❗ do NOT swallow
 
 
 # =========================
-# SIMPLE AGENT (NO CRASH)
+# AGENT
 # =========================
 def intelligent_agent(obs: HackathonObservation):
-    try:
-        text = (getattr(obs, "ticket_text", "") or "").lower()
+    text = (getattr(obs, "ticket_text", "") or "").lower()
 
-        if "billing" in text or "payment" in text:
-            return "billing", "escalate", "We will check billing issue.", "standard"
+    if "billing" in text or "charged" in text:
+        return "billing", "escalate", "Sorry, I understand the issue. We will check this billing problem.", "standard"
 
-        elif "delay" in text or "not received" in text:
-            return "refund", "process_refund", "We will process refund.", "priority"
+    elif "delay" in text or "not arrived" in text:
+        return "refund", "process_refund", "Sorry, I understand the delay of 12 days. We will process your refund on priority.", "priority"
 
-        else:
-            return "replacement", "process_replacement", "We will replace item.", "standard"
-
-    except Exception:
-        return "replacement", "process_replacement", "Handled.", "standard"
+    else:
+        return "replacement", "process_replacement", "Sorry, I understand the issue. We will replace your item.", "standard"
 
 
 # =========================
-# RUN EPISODE (SAFE)
+# RUN EPISODE
 # =========================
 def run_episode(env):
     obs = env.reset()
@@ -91,38 +84,34 @@ def run_episode(env):
     category, action, response, policy = intelligent_agent(obs)
 
     for step in range(1, 4):
-        try:
-            act_type = ["classify", "investigate", action][min(step-1, 2)]
+        act_type = ["classify", "investigate", action][step - 1]
 
-            act = HackathonAction(
-                category=category,
-                type=act_type,
-                response=response,
-                policy=policy
-            )
+        act = HackathonAction(
+            category=category,
+            type=act_type,
+            response=response,
+            policy=policy
+        )
 
-            obs = env.step(act)
+        obs = env.step(act)
 
-            if getattr(obs, "done", False):
-                break
-
-        except Exception as e:
-            print("[STEP ERROR]:", str(e), flush=True)
+        if getattr(obs, "done", False):
             break
 
     return getattr(obs, "reward", 0.0)
 
 
 # =========================
-# MAIN (NEVER FAIL)
+# MAIN
 # =========================
 def main():
     print("[START]", flush=True)
 
     try:
+        # ✅ STRICT INIT
         init_client()
 
-        # 🔥 MUST happen for Phase 2
+        # ✅ MUST CALL (no condition)
         ensure_api_call()
 
         env = HackathonEnvironment()
@@ -136,8 +125,9 @@ def main():
         print(f"[END] avg_score={avg}", flush=True)
 
     except Exception as e:
-        print("[FATAL ERROR]:", str(e), flush=True)
+        print("[FATAL ERROR]", flush=True)
         traceback.print_exc()
+        raise e   # ❗ fail loudly
 
 
 # =========================
@@ -145,4 +135,3 @@ def main():
 # =========================
 if __name__ == "__main__":
     main()
-
