@@ -1,81 +1,60 @@
 
 import os
-import traceback
 from openai import OpenAI
 from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
 
-client = None
-
 # =========================
-# FORCE SAFE CLIENT INIT
+# STRICT CLIENT INIT (NO FALLBACK)
 # =========================
 def init_client():
-    global client
+    api_base = os.environ["API_BASE_URL"]   # ❗ MUST exist in Phase 2
+    api_key = os.environ["API_KEY"]         # ❗ MUST exist in Phase 2
 
-    try:
-        api_base = os.environ.get("API_BASE_URL")
-        api_key = os.environ.get("API_KEY")
+    client = OpenAI(
+        api_key=api_key,
+        base_url=api_base
+    )
 
-        if not api_base or not api_key:
-            print("[INFO] Missing API env (Phase 1 safe)", flush=True)
-            return
-
-        client = OpenAI(
-            api_key=api_key,
-            base_url=api_base
-        )
-
-        print("[CLIENT INITIALIZED]", flush=True)
-
-    except Exception:
-        print("[CLIENT INIT FAILED]", flush=True)
-        traceback.print_exc()
-        client = None
+    print("[CLIENT INITIALIZED]", flush=True)
+    return client
 
 
 # =========================
-# FORCE API CALL (CRITICAL)
+# FORCE API CALL (MANDATORY)
 # =========================
-def force_api_call():
-    global client
+def force_api_call(client):
+    # ❗ NO try/except that hides failure
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": "Reply OK"}],
+        max_tokens=5
+    )
 
-    if client is None:
-        print("[SKIP API CALL]", flush=True)
-        return
+    # Optional read (ensures response parsed)
+    _ = response.choices[0].message.content
 
-    try:
-        client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": "Say OK"}],
-            max_tokens=5
-        )
-
-        print("[API CALL SUCCESS]", flush=True)
-
-    except Exception:
-        print("[API CALL FAILED]", flush=True)
-        traceback.print_exc()
+    print("[API CALL SUCCESS]", flush=True)
 
 
 # =========================
-# AGENT
+# AGENT LOGIC (RULE-BASED)
 # =========================
 def agent(obs):
     text = (obs.ticket_text or "").lower()
 
-    if "charged" in text:
-        return "billing", "escalate", "We will check billing issue.", "standard"
+    if "charge" in text or "billing" in text:
+        return "billing", "escalate", "We will investigate your billing issue.", "standard"
 
-    elif "not arrived" in text:
-        return "refund", "process_refund", "Refund will be processed on priority.", "priority"
+    elif "delay" in text or "not received" in text:
+        return "refund", "process_refund", "Your refund will be processed on priority.", "priority"
 
     else:
-        return "replacement", "process_replacement", "We will replace your item.", "standard"
+        return "replacement", "process_replacement", "We will arrange a replacement.", "standard"
 
 
 # =========================
-# RUN
+# RUN EPISODES
 # =========================
 def run():
     env = HackathonEnvironment()
@@ -107,9 +86,13 @@ def run():
 if __name__ == "__main__":
     print("[START]", flush=True)
 
-    init_client()       # ✅ safe
-    force_api_call()    # ✅ required for Phase 2
+    # ✅ INIT CLIENT (STRICT)
+    client = init_client()
 
+    # ✅ FORCE PROXY API CALL (MANDATORY FOR PHASE 2)
+    force_api_call(client)
+
+    # ✅ RUN ENV
     run()
 
     print("[END]", flush=True)
