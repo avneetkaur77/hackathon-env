@@ -1,22 +1,27 @@
-
 import os
 from openai import OpenAI
 from server.hackathon_env_environment import HackathonEnvironment
 from server.models import HackathonAction
 
 # =========================
-# STRICT CLIENT INIT (NO FALLBACK)
+# CLIENT INIT (STABLE FIX)
 # =========================
 def init_client():
-    api_base = os.environ["API_BASE_URL"]   # ❗ MUST exist in Phase 2
-    api_key = os.environ["API_KEY"]         # ❗ MUST exist in Phase 2
+    api_base = os.environ.get("API_BASE_URL")
+    api_key = os.environ.get("API_KEY")
+
+    if not api_base or not api_key:
+        print("[FATAL] Missing API env vars", flush=True)
+        exit(1)
+
+    # 🔥 IMPORTANT FIX: set env instead of passing base_url
+    os.environ["OPENAI_BASE_URL"] = api_base
 
     client = OpenAI(
-        api_key=api_key,
-        base_url=api_base
+        api_key=api_key
     )
 
-    print("[CLIENT INITIALIZED]", flush=True)
+    print("[CLIENT INITIALIZED SUCCESS]", flush=True)
     return client
 
 
@@ -24,21 +29,17 @@ def init_client():
 # FORCE API CALL (MANDATORY)
 # =========================
 def force_api_call(client):
-    # ❗ NO try/except that hides failure
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "Reply OK"}],
         max_tokens=5
     )
 
-    # Optional read (ensures response parsed)
-    _ = response.choices[0].message.content
-
     print("[API CALL SUCCESS]", flush=True)
 
 
 # =========================
-# AGENT LOGIC (RULE-BASED)
+# AGENT LOGIC (RULE BASED)
 # =========================
 def agent(obs):
     text = (obs.ticket_text or "").lower()
@@ -86,14 +87,11 @@ def run():
 if __name__ == "__main__":
     print("[START]", flush=True)
 
-    # ✅ INIT CLIENT (STRICT)
     client = init_client()
 
-    # ✅ FORCE PROXY API CALL (MANDATORY FOR PHASE 2)
+    # 🔥 MUST happen (proxy detection)
     force_api_call(client)
 
-    # ✅ RUN ENV
     run()
 
     print("[END]", flush=True)
-
