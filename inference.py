@@ -8,32 +8,25 @@ from server.models import HackathonAction
 # CLIENT INIT
 # =========================
 def init_client():
-    api_base = os.environ["API_BASE_URL"]
-    api_key = os.environ["API_KEY"]
-
     client = OpenAI(
-        api_key=api_key,
-        base_url=api_base   # ✅ MUST use this
+        api_key=os.environ["API_KEY"],
+        base_url=os.environ["API_BASE_URL"]
     )
-
-    print("[CLIENT INITIALIZED WITH PROXY]", flush=True)
+    print("[CLIENT INITIALIZED]", flush=True)
     return client
 
 
 # =========================
-# SAFE API CALL (NO CRASH)
+# SAFE API CALL
 # =========================
 def force_api_call(client):
     try:
-        response = client.responses.create(
+        client.responses.create(
             model="gpt-4o-mini",
             input="Reply only OK"
         )
-
         print("[API CALL SUCCESS]", flush=True)
-
     except Exception as e:
-        # ❗ DO NOT CRASH — just log
         print("[API CALL FAILED BUT CONTINUING]:", str(e), flush=True)
 
 
@@ -54,15 +47,20 @@ def agent(obs):
 
 
 # =========================
-# RUN ENV
+# RUN ENV WITH LOGS
 # =========================
 def run():
     env = HackathonEnvironment()
 
-    for _ in range(3):
+    for task_id in range(1, 4):
         obs = env.reset()
 
+        print(f"[START] task={task_id}", flush=True)
+
         category, action, response, policy = agent(obs)
+
+        total_reward = 0.0
+        step_count = 0
 
         for step in range(1, 4):
             act_type = ["classify", "investigate", action][step - 1]
@@ -76,8 +74,21 @@ def run():
                 )
             )
 
+            step_count += 1
+            total_reward += float(obs.reward)
+
+            print(
+                f"[STEP] step={step} reward={float(obs.reward)} done={obs.done}",
+                flush=True
+            )
+
             if obs.done:
                 break
+
+        print(
+            f"[END] task={task_id} score={total_reward} steps={step_count}",
+            flush=True
+        )
 
 
 # =========================
@@ -88,7 +99,7 @@ if __name__ == "__main__":
 
     client = init_client()
 
-    # 🔥 REQUIRED FOR PHASE 2
+    # 🔥 REQUIRED
     force_api_call(client)
 
     run()
