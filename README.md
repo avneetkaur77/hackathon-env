@@ -43,7 +43,7 @@ This project models the workflow as a **multi-step RL environment** for systemat
 
 - Deterministic decision logic  
 - Explainable reasoning  
-- No external API dependency  
+- Uses LLM via proxy for intelligent decision-making
 - Stable evaluation performance  
 
 ### Benefits
