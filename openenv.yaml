@@ -37,7 +37,7 @@ tasks:
     grader:
       type: llm
       prompt_template: |
-        Evaluate the agent's reasoning on an ambiguous issue.
+        Evaluate the agent's reasoning on an ambiguous issue with consistency and justification.
         Score between 0.0 and 1.0 based on:
         - Logical interpretation
         - Appropriate resolution choice
